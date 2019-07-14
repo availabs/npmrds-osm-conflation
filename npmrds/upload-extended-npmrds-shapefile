@@ -1,0 +1,56 @@
+#!/bin/bash
+
+set -e
+set -a
+
+if [ "$#" -ne 1 ]; then
+  (>&2 echo "ERROR: You must specify the shapefile path as the 1st and only CLI argument.")
+  exit 1
+fi
+
+SHP_ZIP_PATH="$1"
+
+if [ ! -f "$SHP_ZIP_PATH" ]; then
+  (>&2 echo "ERROR: No file found at the specified shapefile.")
+  exit 1
+fi
+
+# Create a temporary work directory
+TMP_WORK_DIR="$( mktemp -d )";
+
+# Delete the TMP_WORK_DIR when script finishes
+function finish {
+  rm -rf "$TMP_WORK_DIR"
+}
+trap finish EXIT
+
+# Extract the ZIP archive into a temp dir
+7za e "$SHP_ZIP_PATH" -o"$TMP_WORK_DIR"
+
+# Change CWD to this script's directory.
+pushd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null
+
+# source the database connection config.
+. ../.env
+
+# Last chance to kill script... just in case
+(>&2 echo "PostgreSQL Server: ${PGHOST}:${PGPORT}")
+sleep 3
+
+psql --quiet \
+  -c 'BEGIN;' \
+  -f ./sql/create_npmrds_extended_table.sql \
+  -c 'TRUNCATE npmrds_extended_shapefile;' \
+  -c 'COMMIT;'
+
+# Upload the data
+ogr2ogr -overwrite -append -t_srs EPSG:4326 -f \
+  PostgreSQL "PG:host=${PGHOST} port=${PGPORT} user=${PGUSER} dbname=${PGDATABASE} password=${PGPASSWORD}" \
+  "$TMP_WORK_DIR" -nlt PROMOTE_TO_MULTI -nln npmrds_extended_shapefile;
+
+# Create spatial index and cluster the table using it.
+psql --quiet \
+  -f ./sql/optimize_npmrds_extended_table.sql \
+  -c "VACUUM ANALYZE npmrds_extended_shapefile;"
+
+popd >/dev/null
