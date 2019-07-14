@@ -17,6 +17,5 @@ CREATE TABLE IF NOT EXISTS public.npmrds_extended_shapefile (
   endlong                  DOUBLE PRECISION,
   miles                    DOUBLE PRECISION,
   frc                      INTEGER,
-  wkb_geometry             GEOMETRY(MULTILINESTRING,4326),
-  npmrds_shapefile_version CHARACTER VARYING
+  wkb_geometry             GEOMETRY(MULTILINESTRING,4326)
 ) WITH (fillfactor=100, autovacuum_enabled=false);
