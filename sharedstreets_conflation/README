@@ -1,0 +1,3 @@
+Bug in sharedstreets-js requires creating a node_modules dir in this directory and installing osrm@5.22.0.
+
+Apparently, the node_modules dir must be in the CWD.
