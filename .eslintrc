@@ -1,0 +1,11 @@
+{
+  "env": {
+    "jest": true
+  },
+  "extends": ["airbnb-base", "prettier"],
+  "rules": {
+      "no-plusplus": 0,
+      "no-console": 0,
+      "camelcase": 0
+  }
+}
