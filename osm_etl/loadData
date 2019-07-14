@@ -1,0 +1,47 @@
+#!/bin/bash
+
+set -e
+set -a
+
+# https://github.com/pgRouting/osm2pgrouting#tips
+
+cd "$( dirname "${BASH_SOURCE[0]}" )"
+
+. ../.env
+
+osm2pgrouting \
+  --f ./data/new-york.upstate.osm \
+  --conf ./mapconfig_for_cars.xml \
+  --dbname "$PGDATABASE" \
+  --tags \
+  --addnodes \
+  --attributes \
+  --host "$PGHOST" \
+  --port "$PGPORT" \
+  --username "$PGUSER" \
+  --password "$PGPASSWORD" \
+  --clean
+
+osm2pgrouting \
+  --f ./data/new-york.downstate-east.osm \
+  --conf ./mapconfig_for_cars.xml \
+  --tags \
+  --addnodes \
+  --attributes \
+  --host "$PGHOST" \
+  --port "$PGPORT" \
+  --dbname "$PGDATABASE" \
+  --username "$PGUSER" \
+  --password "$PGPASSWORD"
+
+osm2pgrouting \
+  --f ./data/new-york.downstate-west.osm \
+  --conf ./mapconfig_for_cars.xml \
+  --tags \
+  --addnodes \
+  --attributes \
+  --host "$PGHOST" \
+  --port "$PGPORT" \
+  --dbname "$PGDATABASE" \
+  --username "$PGUSER" \
+  --password "$PGPASSWORD" \

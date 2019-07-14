@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# See:
+#   https://wiki.openstreetmap.org/wiki/Osmosis
+#   https://wiki.openstreetmap.org/wiki/Osmosis/Detailed_Usage_0.47
+
+set -e
+set -a
+
+# https://github.com/pgRouting/osm2pgrouting#tips
+
+cd "$( dirname "${BASH_SOURCE[0]}" )"
+
+# Upstate
+osmosis \
+	--read-pbf file=./data/new-york.osm.pbf \
+  --tf accept-ways highway=* \
+  --used-node \
+  --used-way \
+	--bounding-box top=46.408 right=-67.159 bottom=41.4129 left=-84.408 \
+	--write-xml file=./data/new-york.upstate.osm
+
+# Downstate (NYC)
+osmosis \
+	--read-pbf file=./data/new-york.osm.pbf \
+  --tf accept-ways highway=* \
+  --used-node \
+  --used-way \
+	--bounding-box top=41.4129 right=-67.159 bottom=38.942 left=-74.1254 \
+	--write-xml file=./data/new-york.downstate-west.osm
+
+# Downstate (Long Island)
+osmosis \
+	--read-pbf file=./data/new-york.osm.pbf \
+  --tf accept-ways highway=* \
+  --used-node \
+  --used-way \
+	--bounding-box top=41.4129 right=-74.1254 bottom=38.942 left=-84.408 \
+	--write-xml file=./data/new-york.downstate-east.osm
+
+

@@ -1,0 +1,12 @@
+version: '3'
+services:
+    osm_pgrouting:
+      image: starefossen/pgrouting:10.1-2.4-2.5
+      container_name: osm_pgrouting
+      ports:
+        - "${POSTGRES_PORT}:5432"
+      volumes:
+        - ./pg_data:/data
+      env_file: ./.env
+      environment:
+        - PGDATA=/data

@@ -1,0 +1,12 @@
+#!/bin/bash
+
+set -e
+set -a
+
+cd "$( dirname "${BASH_SOURCE[0]}" )"
+
+. ../.env
+
+# psql -c 'CREATE DATABASE npmrds_routing;' postgres
+# psql -c 'CREATE EXTENSION IF NOT EXISTS pgrouting CASCADE;'
+psql -c 'CREATE EXTENSION IF NOT EXISTS hstore;'
