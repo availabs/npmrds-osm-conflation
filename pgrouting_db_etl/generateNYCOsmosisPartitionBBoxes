@@ -1,0 +1,29 @@
+#!/usr/bin/env node
+
+const { range, round } = require('lodash');
+
+const N = 4;
+
+const x = range(41.4129, 38.942, -(41.4129 - 38.942) / N).concat(38.942);
+const y = range(-67.159, -74.1254, -(-67.159 - -74.1254) / N).concat(-74.1254);
+
+let p = 0;
+for (let i = 0; i < N; ++i) {
+  for (let j = 0; j < N; ++j) {
+    const t = round(x[i], 5);
+    const b = round(x[i + 1], 5);
+    const r = round(y[j], 5);
+    const l = round(y[j + 1], 5);
+
+    const cmd = `
+osmosis \\
+  --read-pbf file=./data/new-york.osm.pbf \\
+  --tf accept-ways highway=* \\
+  --bounding-box \\
+      completeWays=yes completeRelations=yes \\
+      top=${t} right=${r} bottom=${b} left=${l} \\
+  --write-xml file=./data/new-york.downstate-west.${++p}.osm`;
+
+    console.log(cmd);
+  }
+}

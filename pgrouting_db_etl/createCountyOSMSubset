@@ -1,0 +1,81 @@
+#!/bin/bash
+
+# shellcheck disable=SC2086
+
+# Creates a partition of the osm file for the county
+
+# osm2pgrouting requires xml format
+
+# See:
+#   https://github.com/pgRouting/osm2pgrouting#tips
+#   https://wiki.openstreetmap.org/wiki/Osmosis
+#   https://wiki.openstreetmap.org/wiki/Osmosis/Detailed_Usage_0.47
+#   https://wiki.openstreetmap.org/wiki/Osmosis/Polygon_Filter_File_Format
+
+set -e
+set -a
+
+
+if [ "$#" -ne 2 ]; then
+  (>&2 echo 'USAGE: You must provide two CLI argument. 1st is the county name. 2nd is the output format (xml or pbf).')
+  exit 1
+fi
+
+COUNTY="${1,,}"
+FORMAT="${2,,}"
+
+if [ "$FORMAT" != 'xml' ] && [ "$FORMAT" != 'pbf' ]; then
+  (>&2 echo "ERROR: Unrecognized the output format. The supported formats are xml and pbf.")
+  exit 1
+fi
+
+
+pushd "$( dirname "${BASH_SOURCE[0]}" )/" >/dev/null
+
+# source the database connection config.
+. ../.env
+
+SQL="
+  SELECT
+      ST_ConvexHull(
+        ST_Collect(
+          wkb_geometry
+        )
+      ) AS bpoly
+    FROM public.npmrds_extended_shapefile
+    WHERE (
+      LOWER(county) = '$COUNTY'
+    )
+  ;
+"
+
+# Get the county bounding polygon as a string variable
+BOUNDING_POLY="$COUNTY
+tmc_convex_hull
+$(
+  ogr2ogr -s_srs EPSG:4326 -t_srs EPSG:4326 -f GeoJSON /vsistdout/ \
+      "PG:host=${PGHOST} port=${PGPORT} user=${PGUSER} dbname=${PGDATABASE} password=${PGPASSWORD}" \
+      -sql "$SQL" |
+    jq '.features|map(.geometry.coordinates)|flatten[]' |
+    paste -s -d' \n' |
+    column -t |
+    sed 's/^/  /'
+)
+END
+END"
+
+[ "$FORMAT" == 'xml' ] && FORMAT_FLAGS='--write-xml' || FORMAT_FLAGS='--write-pbf omitmetadata=true'
+
+  # --tf accept-ways highway=motorway,trunk,primary,secondary,tertiary,unclassified \
+  # --tf accept-ways highway=motorway,trunk,primary,secondary,tertiary,unclassified,residential,motorway_link,trunk_link,primary_link,secondary_link,tertiary_link
+  # --tf accept-ways highway=motorway,trunk,primary,secondary,tertiary,unclassified,residential,motorway_link,trunk_link,primary_link,secondary_link\
+
+osmosis \
+	--read-pbf file=./data/new-york.osm.pbf \
+  --tf accept-ways highway=motorway,trunk,primary,secondary,tertiary,unclassified,residential,motorway_link,trunk_link \
+  --bounding-polygon file=<( echo "$BOUNDING_POLY" ) completeWays=true \
+  --used-node \
+	$FORMAT_FLAGS file=/dev/stdout
+
+popd >/dev/null
+

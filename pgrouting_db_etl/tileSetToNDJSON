@@ -1,0 +1,67 @@
+#!/usr/bin/env node
+
+// https://github.com/sharedstreets/sharedstreets-ref-system#core-concepts
+
+const assert = require('assert').strict;
+const { readdirSync, readFileSync, writeFileSync } = require('fs');
+const { join } = require('path');
+
+const sharedstreetsPbf = require('sharedstreets-pbf');
+
+const yargs = require('yargs');
+const { sync: mkdirpSync } = require('mkdirp');
+const { sync: rimrafSync } = require('rimraf');
+
+const { argv } = yargs
+  .strict()
+  .parserConfiguration({
+    'camel-case-expansion': false,
+    'flatten-duplicate-arrays': false
+  })
+  .wrap(yargs.terminalWidth() / 1.618)
+  .example(
+    './tileSetToNDJSON --tilesetDir sharedstreets_tiles/albany --outputDir sharedstreets_ndjson --clean'
+  )
+  .option({
+    tilesetDir: {
+      demand: true,
+      type: 'string'
+    },
+    outputDir: {
+      demand: true,
+      type: 'string'
+    },
+    clean: {
+      type: 'boolean',
+      description: 'Empty the outputDir before beginning.',
+      default: false
+    }
+  });
+
+const { tilesetDir, outputDir, clean } = argv;
+
+if (clean) {
+  rimrafSync(outputDir);
+}
+
+mkdirpSync(outputDir);
+
+const tileFiles = readdirSync(tilesetDir);
+
+for (let i = 0; i < tileFiles.length; ++i) {
+  const fname = tileFiles[i];
+  const fileType = fname.match(/reference|intersection|geometry|metadata/);
+  const parser = sharedstreetsPbf[fileType];
+
+  const d = parser(readFileSync(join(tilesetDir, fname)));
+
+  assert(Array.isArray(d));
+
+  const ndjson = d.reduce(
+    (acc, row) => `${acc}${JSON.stringify(row)}
+`,
+    ''
+  );
+
+  writeFileSync(join(outputDir, fname.replace(/pbf$/, 'ndjson')), ndjson);
+}

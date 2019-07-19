@@ -1,0 +1,27 @@
+#!/bin/bash
+
+#### NO LONGER USED !!!
+
+# npmrds_routing=# select count(1) from npmrds_extended_shapefile where county = 'ALBANY';
+#  count
+# -------
+#   1211
+# (1 row)
+
+# NOT Right. Only 516 matches. Why?
+# ../node_modules/.bin/shst match inrix.albany.geojson --best-direction --out=data/shst.albany.geojson
+
+## jq '.features[].properties.pp_tmc' data/shst.albany.match-car.follow-line-direction.tile-hierarchy-7.matched.geojson | sort -u | wc -l
+# 1192
+# ../node_modules/.bin/shst match inrix.albany.geojson \
+  # --match-car \
+  # --follow-line-direction \
+  # --tile-hierarchy=7 \
+  # --out=data/shst.albany.match-car.follow-line-direction.tile-hierarchy-7.geojson
+
+
+../node_modules/.bin/shst match inrix.albany.geojson \
+  --match-car \
+  --follow-line-direction \
+  --tile-hierarchy=6 \
+  --out=data/shst.albany.geojson

@@ -1,3 +1,0 @@
-#!/bin/bash
-
-../node_modules/.bin/shst match inrix.albany.geojson --best-direction --out=data/shst.albany.geojson

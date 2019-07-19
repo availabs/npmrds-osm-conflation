@@ -2,3 +2,6 @@ package-lock.json
 node_modules/
 data/
 .env
+*.bak
+*\.geojson
+*\.ndjson

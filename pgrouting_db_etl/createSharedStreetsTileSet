@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# TODO: Make this a yargs script
+
+set -e
+set -a
+
+if [ "$#" -ne 1 ]; then
+  (>&2 echo 'USAGE: You must provide the county name as the 1st and only CLI argument.')
+  exit 1
+fi
+
+COUNTY="${1,,}"
+
+cd "$( dirname "${BASH_SOURCE[0]}" )"
+
+INFILE="$( realpath "./data/$COUNTY.osm.pbf" )"
+
+if [ ! -f "$INFILE" ]; then
+  (>&2 echo "ERROR: The script expected to find the county input osm.pbf file at $INFILE")
+  exit 1
+fi
+
+mkdir -p ./sharedstreets_tiles/
+
+OUTDIR="./sharedstreets_tiles/$COUNTY"
+
+rm -rf "$OUTDIR"
+
+java -jar sharedstreets-builder-0.3.1.jar --input "$INFILE" --output "$OUTDIR"

@@ -1,0 +1,55 @@
+#!/bin/bash
+
+set -e
+set -a
+
+source ../.env
+
+# pushd ../npmrds_etl/ >/dev/null
+
+# ./upload-extended-npmrds-shapefile data/inrix_expanded.zip
+# ./upload-tmc-identification data/TMC_Identification.csv
+
+# popd >/dev/null
+
+# pushd ../sharedstreets_conflation >/dev/null
+
+# ./matchCounty
+
+# popd >/dev/null
+
+# ./createCountyOSMSubset albany xml > data/albany.osm
+# ./createCountyOSMSubset albany pbf > data/albany.osm.pbf
+
+# rm -rf sharedstreets_ndjson/*
+# rm -rf sharedstreets_tiles/*
+
+# ./createSharedStreetsTileSet albany
+
+# ./tileSetToNDJSON \
+  # --tilesetDir sharedstreets_tiles/albany \
+  # --outputDir sharedstreets_ndjson \
+  # --clean
+
+# #### Database DDL ####
+
+# ./createDatabase
+
+
+# psql -f createSharedStreetsTables.sql
+
+# #### Load Database ####
+
+# ./load_osm_into_db data/albany.osm
+
+# ./load_tileset_ndjson_into_db \
+  # --tilesetNDJSONDir \
+  # ./sharedstreets_ndjson \
+  # --clean
+
+# ./load_shst_matched_output_into_db \
+  # --clean \
+  # --shstTmcMatchesFile \
+    # ../sharedstreets_conflation/data/shst.albany.matched.geojson 
+
+psql -f ./finishUp.sql

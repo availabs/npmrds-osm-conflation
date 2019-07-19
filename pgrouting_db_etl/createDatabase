@@ -7,6 +7,9 @@ cd "$( dirname "${BASH_SOURCE[0]}" )"
 
 . ../.env
 
-# psql -c 'CREATE DATABASE npmrds_routing;' postgres
-# psql -c 'CREATE EXTENSION IF NOT EXISTS pgrouting CASCADE;'
+if [ "$( psql -tAc "SELECT 1 FROM pg_database WHERE datname='$PGDATABASE'" postgres )" != '1' ]; then
+  psql -c 'CREATE DATABASE npmrds_routing;' postgres
+fi
+
+psql -c 'CREATE EXTENSION IF NOT EXISTS pgrouting CASCADE;'
 psql -c 'CREATE EXTENSION IF NOT EXISTS hstore;'

@@ -1,0 +1,43 @@
+#!/usr/bin/env node
+
+// Takes a NDJSON file of GeoJSON feaures via STDIN
+//   And outputs to STDOUT a valid GeoJSON object
+
+const { through } = require('mississippi');
+const split = require('split2');
+const { uniq } = require('lodash');
+
+const ways2tmcs = {};
+
+process.stdin
+  .pipe(split(JSON.parse))
+  .pipe(
+    through.obj(
+      ({ tmc, wayChains }, _, cb) => {
+        if (!wayChains) {
+          return cb();
+        }
+        for (let i = 0; i < wayChains.length; ++i) {
+          const wayChain = wayChains[i];
+          for (let j = 0; j < wayChain.length; ++j) {
+            const way = wayChain[i];
+            ways2tmcs[way] = ways2tmcs[way] || [];
+            ways2tmcs[way].push(tmc);
+          }
+        }
+
+        return cb();
+      },
+      function flush(cb) {
+        const ways = Object.keys(ways2tmcs);
+        for (let i = 0; i < ways.length; ++i) {
+          const way = ways[i];
+          const tmcs = ways2tmcs[way];
+          const d = { way, tmcs: uniq(tmcs) };
+          this.push(`${JSON.stringify(d)}\n`);
+        }
+        cb();
+      }
+    )
+  )
+  .pipe(process.stdout);

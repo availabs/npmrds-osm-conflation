@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# Example Usage:
+# ./src/utils/osm_ndjson_county_filter albany < store/step_0/osm_36.ndjson > store/step_0/osm_36001.ndjson
+
+COUNTY_NAME="$1"
+
+if [ "$#" -ne 1 ]; then
+  >&2 echo 'ERROR: County name must be provided as the 1st & only command line argument'
+  exit 1
+fi;
+
+grep -i "\"county\":\"$COUNTY_NAME" -
