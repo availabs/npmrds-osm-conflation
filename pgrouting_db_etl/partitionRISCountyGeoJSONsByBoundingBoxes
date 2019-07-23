@@ -1,0 +1,142 @@
+#!/usr/bin/env node
+
+const { exec, execSync } = require('child_process');
+const { openSync, appendFileSync, closeSync } = require('fs');
+const { basename, extname, join } = require('path');
+const split = require('split2');
+const { pipe, through } = require('mississippi');
+const yargs = require('yargs');
+const { sync: mkdirpSync } = require('mkdirp');
+const turf = require('@turf/turf');
+const { padStart } = require('lodash');
+
+const cliArgsSpec = {
+  risCountyGeoJSON: {
+    demand: true,
+    type: 'string',
+    description:
+      'Path to the RIS GeoDatabase. It is REQUIRED that every record has a populated County_Name field.'
+  },
+  N: {
+    demand: false,
+    type: 'number',
+    description:
+      '(Roughly) Max number of features per bounding box. Passed to ./getKDBoundingBoxes.',
+    default: 2 ** 14
+  },
+  outDir: {
+    demand: true,
+    type: 'string',
+    description:
+      'The directory into which to write the partitioned county geojson files. Creates directory if it does not exist.'
+  }
+};
+
+const { argv } = yargs
+  .strict()
+  .parserConfiguration({
+    'camel-case-expansion': false,
+    'flatten-duplicate-arrays': false
+  })
+  .wrap(yargs.terminalWidth() / 1.618)
+  .option(cliArgsSpec)
+  .usage(
+    `Uses getKDBoundingBoxes to create bounding box partitions of the county GeoJSON files.
+    Partitioned GeoJSON files are written into the specified --outDir directory.
+
+    USAGE:
+    ./partitionRISCountyGeoJSONsByBoundingBoxes --risCountyGeoJSON ./foo/ris.nassau.geojson -N 1028 --outDir bar
+    `
+  );
+
+const { risCountyGeoJSON, outDir, N } = argv;
+
+mkdirpSync(outDir);
+
+// ===== Step 1: Get the bounding boxes
+const boundingBoxesGeoJSON = JSON.parse(
+  execSync(
+    `jq -c '.features[]' ${risCountyGeoJSON} | ${join(
+      __dirname,
+      `./getKDBoundingBoxes -N${N}`
+    )}`
+  )
+);
+
+const boundingBoxes = boundingBoxesGeoJSON.features;
+
+const cmd = `jq -c '.features[]' ${risCountyGeoJSON}`;
+const { stdout: risFeatureStream } = exec(cmd, {
+  //  maxBuffer
+  //    Largest amount of data in bytes allowed on stdout or stderr.
+  //    If exceeded, the child process is terminated and any output is truncated.
+  //
+  //  Better to crash hard on out of memory than to get cryptic "pipe closed prematurely" error.
+  maxBuffer: Infinity
+});
+
+const partitionFDs = {};
+const geoJSONHeader =
+  '{"type":"FeatureCollection","name":"roadwayinventory","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[';
+
+const infExtname = extname(risCountyGeoJSON);
+const partitionNumPaddingLen = Math.log10(boundingBoxes.length) + 1;
+
+pipe(
+  risFeatureStream,
+  split(),
+  through(
+    function bboxPartitioner(line, _, cb) {
+      const feature = JSON.parse(line);
+      for (let i = 0; i < boundingBoxes.length; ++i) {
+        try {
+          const bbox = turf.bbox(boundingBoxes[i]);
+          const clipped = turf.bboxClip(feature, bbox);
+          if (turf.length(clipped)) {
+            let fd = partitionFDs[i];
+            if (!fd) {
+              const outf = join(
+                outDir,
+                `${basename(risCountyGeoJSON, infExtname)}.${padStart(
+                  i,
+                  partitionNumPaddingLen,
+                  '0'
+                )}${infExtname}`
+              );
+
+              fd = openSync(outf, 'a');
+
+              partitionFDs[i] = fd;
+
+              appendFileSync(fd, `${geoJSONHeader}${line}`, 'utf8');
+            } else {
+              appendFileSync(fd, `,${line}`, 'utf8');
+            }
+          }
+        } catch (err) {
+          console.error('ERROR PROCESSING:', feature.properties.DOT_ID);
+          // console.error(err);
+        }
+      }
+
+      return cb();
+    },
+    function finish(cb) {
+      Object.keys(partitionFDs).forEach(i => {
+        const fd = partitionFDs[i];
+
+        appendFileSync(fd, ']}');
+
+        closeSync(fd);
+      });
+
+      console.error('done');
+      return cb();
+    }
+  ),
+  err => {
+    if (err) {
+      console.error(err);
+    }
+  }
+);

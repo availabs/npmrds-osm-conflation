@@ -1,0 +1,42 @@
+#!/bin/bash
+
+set -e
+set -a
+
+cd "$( dirname "${BASH_SOURCE[0]}" )"
+
+if [ "$#" -ne 1 ]; then
+  (>&2 echo "ERROR: You must specify the OSM_PLANET_VER as the 1st and only CLI argument.")
+  exit 1
+fi
+
+OSM_PLANET_VER="$1"
+SHST_TILES_DIR=sharedstreets_tiles
+SHST_TILES_URL="https://tiles.sharedstreets.io/osm/planet-$OSM_PLANET_VER"
+
+if [ ! -d "$SHST_TILES_DIR" ]; then
+  echo "ERROR: No sharedstreets_tiles directory."
+  exit 1
+fi
+
+LOCAL_METADATA_FILES="$(
+  find "$SHST_TILES_DIR" -type f -name '*metadata*' -printf '%f\n' |
+    sort -u
+)"
+
+REQUIRED_METADATA_FILES="$(
+  find "$SHST_TILES_DIR" -type f -printf '%f\n' |
+    sed 's/reference\|geometry/metadata/g' |
+    sort -u
+)"
+
+if METADATA_FILES_TO_SCRAPE="$(
+  grep --invert-match -f <( echo "$LOCAL_METADATA_FILES" | sed '/^$/d' ) <<< "$REQUIRED_METADATA_FILES" 
+)"; then
+  while read -r f; do
+    curl "$SHST_TILES_URL/$f" > "$SHST_TILES_DIR/$f"
+    sleep 1
+  done <<< "$METADATA_FILES_TO_SCRAPE"
+fi
+
+

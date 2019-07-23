@@ -3,6 +3,8 @@
 set -e
 set -a
 
+cd "$( dirname "${BASH_SOURCE[0]}" )"
+
 source ../.env
 
 # pushd ../npmrds_etl/ >/dev/null
@@ -14,42 +16,44 @@ source ../.env
 
 # pushd ../sharedstreets_conflation >/dev/null
 
-# ./matchCounty
+./shstMatchNPMRDS 
 
 # popd >/dev/null
 
-# ./createCountyOSMSubset albany xml > data/albany.osm
-# ./createCountyOSMSubset albany pbf > data/albany.osm.pbf
-
+./createCountyOSMSubset albany xml > data/osm/albany.osm
+./createCountyOSMSubset albany pbf > data/osm/albany.osm.pbf
+# 
 # rm -rf sharedstreets_ndjson/*
 # rm -rf sharedstreets_tiles/*
-
+# 
 # ./createSharedStreetsTileSet albany
-
+# 
 # ./tileSetToNDJSON \
-  # --tilesetDir sharedstreets_tiles/albany \
-  # --outputDir sharedstreets_ndjson \
-  # --clean
+#   --tilesetDir sharedstreets_tiles/albany \
+#   --outputDir sharedstreets_ndjson \
+#   --clean
 
 # #### Database DDL ####
-
+# 
 # ./createDatabase
+# 
+# psql -f ./sql/createSharedStreetsTables.sql
+# psql -f ./sql/createRoadInventorySystemTables.sql
 
+#### Load Database ####
 
-# psql -f createSharedStreetsTables.sql
+./load_osm_into_db data/osm/albany.osm
 
-# #### Load Database ####
+./load_tileset_ndjson_into_db \
+  --tilesetNDJSONDir \
+  ./sharedstreets_ndjson \
+  --clean
 
-# ./load_osm_into_db data/albany.osm
+./load_shst_matched_output_into_db \
+  --clean \
+  --shstTmcMatchesFile \
+    ../sharedstreets_conflation/data/shst.albany.matched.geojson 
 
-# ./load_tileset_ndjson_into_db \
-  # --tilesetNDJSONDir \
-  # ./sharedstreets_ndjson \
-  # --clean
+./loadRisGeodatabase ./data/ris/RISDuplicate.gdb
+./extractAlbanyRISAsGeoJSON > ./data/ris/geojson/ris.albany.geojson
 
-# ./load_shst_matched_output_into_db \
-  # --clean \
-  # --shstTmcMatchesFile \
-    # ../sharedstreets_conflation/data/shst.albany.matched.geojson 
-
-psql -f ./finishUp.sql

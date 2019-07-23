@@ -6,7 +6,7 @@ cd "$( dirname "${BASH_SOURCE[0]}" )"
 
 rm -rf sharedstreets_tiles
 
-find data -regex '.*\(upstate\|downstate\).*.[0-9]+.osm.pbf' |
+find data/osm -regex '.*\(upstate\|downstate\).*.[0-9]+.osm.pbf' |
   sort |
   while read -r f; do
     dir="${f/.osm.pbf/}"

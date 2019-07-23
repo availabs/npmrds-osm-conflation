@@ -1,0 +1,38 @@
+#!/bin/bash
+
+# shellcheck disable=SC2086
+
+set -e
+set -a
+
+cd "$( dirname "${BASH_SOURCE[0]}" )/"
+
+# source the database connection config.
+. ../.env
+
+SQL="
+  SELECT
+      ST_ConvexHull(
+        ST_Collect(
+          ris.wkb_geometry
+        )
+      ) AS bpoly
+    FROM ris.road_inventory_system ris
+  ;
+"
+
+# Get the county bounding polygon as a string variable
+echo "$COUNTY
+tmc_convex_hull
+$(
+  ogr2ogr -s_srs EPSG:4326 -t_srs EPSG:4326 -f GeoJSON /vsistdout/ \
+      "PG:host=${PGHOST} port=${PGPORT} user=${PGUSER} dbname=${PGDATABASE} password=${PGPASSWORD}" \
+      -sql "$SQL" |
+    jq '.features|map(.geometry.coordinates)|flatten[]' |
+    sed '/^0$/d' |
+    paste -s -d' \n' |
+    column -t |
+    sed 's/^/  /'
+)
+END
+END"

@@ -13,7 +13,7 @@ psql -c 'CREATE SCHEMA IF NOT EXISTS pgrouting;'
 
 CLEAN_ONCE='--clean'
 
-find data -regex '.*\(upstate\|downstate\).*.[0-9]+.osm' |
+find data/osm -regex '.*\(upstate\|downstate\).*.[0-9]+.osm' |
   sort |
   while read -r f; do
     osm2pgrouting \

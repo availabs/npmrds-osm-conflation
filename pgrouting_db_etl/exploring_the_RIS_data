@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# STEP 1 of the preparing RIS data for running shst match, is to partition the data by county.
+#
+#     If the County_Name field is not null for EVERY entry, then this step is trival.
+#     Otherwise, we need to get the bounding polygons of each county and use them.
+#
+# Question: Is the County_Name field populated for EVERY RIS geodatabase entry?
+#
+# For the Albany County subset:
+#
+# jq -c '.features[]|.properties.County_Name' ris.albany.geojson| sort -u
+# "ALBANY"
+#
+# If the field is not populated, the above output would include 'null':
+#
+# jq -c '.features[]|.properties.FOO' ris.albany.geojson| sort -u
+# null
+#
+# For all of NYS:
+# ogr2ogr -f GeoJSON /vsistdout/ RISDuplicate.gdb |
+#   jq -c '.features[]|.properties.County_Name' |
+#   sort -u |
+#   grep null |
+#   wc -l
+# 0
+#
+# Answer: Yes. EVERY RIS entry has the County_Name field populated.
+#
+# Question: Is there consistent County_Name spellings? Any typos?
+#
+# There are 62 NYS counties.
+#
+# ogr2ogr -f GeoJSON /vsistdout/ RISDuplicate.gdb |
+#   jq -c '.features[]|.properties.County_Name' |
+#   sort -u |
+#   wc -l
+# 62
+#
+# ANSWER: Consistent county name spellings.

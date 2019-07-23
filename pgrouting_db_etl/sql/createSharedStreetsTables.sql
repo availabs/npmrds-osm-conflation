@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS sharedstreets.reference (
  location_references      JSONB
 ) WITH (fillfactor=100,autovacuum_enabled=false) ;
 
-CREATE INDEX reference_geometry_id_idx
+CREATE INDEX IF NOT EXISTS reference_geometry_id_idx
  ON sharedstreets.reference (geometry_id)
 ;
 
@@ -20,7 +20,7 @@ CLUSTER sharedstreets.reference
  USING reference_geometry_id_idx
 ;
 
-CREATE INDEX reference_location_references_idx
+CREATE INDEX IF NOT EXISTS reference_location_references_idx
  ON sharedstreets.reference
  USING GIN (location_references)
 ;
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS sharedstreets.intersection (
  the_geom                 geometry(Point, 4326)
 ) WITH (fillfactor=100,autovacuum_enabled=false) ;
 
-CREATE INDEX intersection_geom_idx
+CREATE INDEX IF NOT EXISTS intersection_geom_idx
  ON sharedstreets.intersection
  USING GIST (the_geom)
 ;
@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS sharedstreets.geometry (
  the_geom                 geometry(LineString, 4326)
 ) WITH (fillfactor=100,autovacuum_enabled=false) ;
 
-CREATE INDEX geometry_geom_idx
+CREATE INDEX IF NOT EXISTS geometry_geom_idx
  ON sharedstreets.geometry
  USING GIST(the_geom)
 ;
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS sharedstreets.metadata (
  name                     CHARACTER VARYING
 ) WITH (fillfactor=100,autovacuum_enabled=false) ;
 
-CREATE INDEX metadata_osm_metadata_idx
+CREATE INDEX IF NOT EXISTS metadata_osm_metadata_idx
  ON sharedstreets.metadata
  USING GIN(osm_metadata)
 ;

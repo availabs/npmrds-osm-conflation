@@ -17,12 +17,12 @@ for (let i = 0; i < N; ++i) {
 
     const cmd = `
 osmosis \\
-  --read-pbf file=./data/new-york.osm.pbf \\
+  --read-pbf file=./data/osm/new-york.osm.pbf \\
   --tf accept-ways highway=* \\
   --bounding-box \\
       completeWays=yes completeRelations=yes \\
       top=${t} right=${r} bottom=${b} left=${l} \\
-  --write-xml file=./data/new-york.downstate-west.${++p}.osm`;
+  --write-xml file=./data/osm/new-york.downstate-west.${++p}.osm`;
 
     console.log(cmd);
   }

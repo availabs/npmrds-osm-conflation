@@ -20,8 +20,7 @@
   # --out=data/shst.albany.match-car.follow-line-direction.tile-hierarchy-7.geojson
 
 
-../node_modules/.bin/shst match inrix.albany.geojson \
+node --max_old_space_size=8192 ../node_modules/.bin/shst match ris.albany.geojson \
   --match-car \
-  --follow-line-direction \
   --tile-hierarchy=6 \
-  --out=data/shst.albany.geojson
+  --out=data/shst.albany.ris.geojson

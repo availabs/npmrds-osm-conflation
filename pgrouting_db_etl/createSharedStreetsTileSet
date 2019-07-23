@@ -14,7 +14,7 @@ COUNTY="${1,,}"
 
 cd "$( dirname "${BASH_SOURCE[0]}" )"
 
-INFILE="$( realpath "./data/$COUNTY.osm.pbf" )"
+INFILE="$( realpath "./data/osm/$COUNTY.osm.pbf" )"
 
 if [ ! -f "$INFILE" ]; then
   (>&2 echo "ERROR: The script expected to find the county input osm.pbf file at $INFILE")

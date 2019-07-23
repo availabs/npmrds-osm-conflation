@@ -15,11 +15,9 @@
 set -e
 set -a
 
+
 if [ "$#" -ne 2 ]; then
-  (>&2 echo 'USAGE: You must provide two positional CLI argument:')
-  (>&2 echo '         * 1st is the county name')
-  (>&2 echo '         * 2nd is the output format (xml or pbf)')
-  (>&2 echo '       Output written to STDOUT.')
+  (>&2 echo 'USAGE: You must provide two CLI argument. 1st is the county name. 2nd is the output format (xml or pbf).')
   exit 1
 fi
 
@@ -68,7 +66,13 @@ END"
 
 [ "$FORMAT" == 'xml' ] && FORMAT_FLAGS='--write-xml' || FORMAT_FLAGS='--write-pbf omitmetadata=true'
 
-# highway=motorway,trunk,primary,secondary,tertiary,unclassified,residential,motorway_link,trunk_link,primary_link,secondary_link,tertiary_link,service,living_street\
+  # --tf accept-ways highway=motorway,trunk,primary,secondary,tertiary,unclassified \
+  # --tf accept-ways highway=motorway,trunk,primary,secondary,tertiary,unclassified,residential,motorway_link,trunk_link,primary_link,secondary_link,tertiary_link
+  # --tf accept-ways highway=motorway,trunk,primary,secondary,tertiary,unclassified,residential,motorway_link,trunk_link,primary_link,secondary_link\
+
+  ## This one seemed to work for NPMRDS/ShSt/pgR, but not high resolution enough for RIS.
+  # --tf accept-ways highway=motorway,trunk,primary,secondary,tertiary,unclassified,residential,motorway_link,trunk_link \
+    # highway=motorway,trunk,primary,secondary,tertiary,unclassified,residential,motorway_link,trunk_link,primary_link,secondary_link,tertiary_link,service,living_street\
 
 osmosis \
   --read-pbf file=./data/osm/new-york.osm.pbf \
