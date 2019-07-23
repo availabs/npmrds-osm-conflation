@@ -48,7 +48,7 @@ const { risGeodatabase, outDir } = argv;
 
 mkdirpSync(outDir);
 
-const cmd = `ogr2ogr -f GeoJSON /vsistdout/ ${risGeodatabase} -t_srs 'EPSG:4326' | jq -c '.features[]'`;
+const cmd = `ogr2ogr -f GeoJSON /vsistdout/ ${risGeodatabase} -t_srs 'EPSG:4326' -dim 2 | jq -c '.features[]'`;
 
 console.error(cmd);
 
