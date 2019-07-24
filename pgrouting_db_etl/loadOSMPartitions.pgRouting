@@ -13,7 +13,7 @@ fi
 OSM_DIR="$( realpath "$1" )"
 
 if [ ! -d "$OSM_DIR" ]; then
-  (>&2 echo "ERROR: No file found at $OSM_DIR")
+  (>&2 echo "ERROR: No directory found at $OSM_DIR")
   exit 1
 fi
 

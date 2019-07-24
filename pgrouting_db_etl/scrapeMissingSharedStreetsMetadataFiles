@@ -26,7 +26,7 @@ LOCAL_METADATA_FILES="$(
 
 REQUIRED_METADATA_FILES="$(
   find "$SHST_TILES_DIR" -type f -printf '%f\n' |
-    sed 's/reference\|geometry/metadata/g' |
+    sed 's/reference\|geometry\|intersection/metadata/g' |
     sort -u
 )"
 
