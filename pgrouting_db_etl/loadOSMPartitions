@@ -29,17 +29,17 @@ find "$OSM_DIR" -type f |
   sort |
   while read -r f; do
     osm2pgrouting \
-      --f "$f" \
-      --tags \
-      --addnodes \
       --dbname "$PGDATABASE" \
-      --schema 'pgrouting' \
-      --attributes \
       --host "$PGHOST" \
       --port "$PGPORT" \
       --username "$PGUSER" \
       --password "$PGPASSWORD" \
+      --schema 'pgrouting' \
+      --f "$f" \
       --conf ./mapconfig_for_cars.xml \
+      --tags \
+      --addnodes \
+      --attributes \
       "$CLEAN"
 
     CLEAN=''

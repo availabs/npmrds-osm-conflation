@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+/* eslint no-use-before-define: 0 */
+
 // https://github.com/sharedstreets/sharedstreets-ref-system#core-concepts
 
 const { spawn } = require('child_process');
@@ -14,6 +16,18 @@ const { query, pool, end } = require('../src/services/db_service');
 
 const NULL = 'NULL';
 
+const cliArgsSpec = {
+  tilesetNDJSONDir: {
+    demand: true,
+    type: 'string'
+  },
+  clean: {
+    type: 'boolean',
+    description: 'Truncate tables before loading',
+    default: false
+  }
+};
+
 const { argv } = yargs
   .strict()
   .parserConfiguration({
@@ -24,22 +38,38 @@ const { argv } = yargs
     './load_tileset_ndjson_into_db --tilesetNDJSONDir ./sharedstreets_ndjson --clean'
   )
   .wrap(yargs.terminalWidth() / 1.618)
-  .option({
-    tilesetNDJSONDir: {
-      demand: true,
-      type: 'string'
-    },
-    clean: {
-      type: 'boolean',
-      description: 'Truncate tables before loading',
-      default: false
-    }
-  });
+  .option(cliArgsSpec);
 
 const { tilesetNDJSONDir, clean } = argv;
 
-const loadReferences = () =>
-  new Promise((resolve, reject) => {
+(async () => {
+  try {
+    await query('CREATE SCHEMA IF NOT EXISTS sharedstreets;');
+
+    if (clean) {
+      await query(`
+        BEGIN;
+        TRUNCATE sharedstreets.reference;
+        TRUNCATE sharedstreets.intersection;
+        TRUNCATE sharedstreets.geometry;
+        TRUNCATE sharedstreets.metadata;
+        COMMIT;
+      `);
+    }
+
+    await loadReferences();
+    await loadIntersections();
+    await loadGeometries();
+    await loadMetadata();
+  } catch (err) {
+    console.error(err);
+  } finally {
+    await end();
+  }
+})();
+
+function loadReferences() {
+  return new Promise((resolve, reject) => {
     const dir = `${join(process.cwd(), tilesetNDJSONDir)}/`;
 
     pool.connect((err, client, done) => {
@@ -92,8 +122,9 @@ const loadReferences = () =>
       );
     });
   });
+}
 
-const loadIntersections = async () => {
+async function loadIntersections() {
   await new Promise((resolve, reject) => {
     const dir = `${join(process.cwd(), tilesetNDJSONDir)}/`;
 
@@ -168,9 +199,9 @@ const loadIntersections = async () => {
       SET the_geom = ST_SetSRID(ST_MakePoint(lon, lat), 4326)
     ;
   `);
-};
+}
 
-const loadGeometries = async () => {
+async function loadGeometries() {
   await new Promise((resolve, reject) => {
     const dir = `${join(process.cwd(), tilesetNDJSONDir)}/`;
 
@@ -275,10 +306,10 @@ const loadGeometries = async () => {
   `;
 
   await query(sql);
-};
+}
 
-const loadMetadata = () =>
-  new Promise((resolve, reject) => {
+async function loadMetadata() {
+  return new Promise((resolve, reject) => {
     const dir = `${join(process.cwd(), tilesetNDJSONDir)}/`;
 
     pool.connect((err, client, done) => {
@@ -324,29 +355,4 @@ const loadMetadata = () =>
       );
     });
   });
-
-(async () => {
-  try {
-    await query('CREATE SCHEMA IF NOT EXISTS sharedstreets;');
-
-    if (clean) {
-      await query(`
-        BEGIN;
-        TRUNCATE sharedstreets.reference;
-        TRUNCATE sharedstreets.intersection;
-        TRUNCATE sharedstreets.geometry;
-        TRUNCATE sharedstreets.metadata;
-        COMMIT;
-      `);
-    }
-
-    await loadReferences();
-    await loadIntersections();
-    await loadGeometries();
-    await loadMetadata();
-  } catch (err) {
-    console.error(err);
-  } finally {
-    await end();
-  }
-})();
+}

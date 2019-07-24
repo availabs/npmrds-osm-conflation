@@ -1,0 +1,42 @@
+#!/bin/bash
+
+set -e
+set -a
+
+if [ "$#" -ne 1 ]; then
+  (>&2 echo "USAGE: You must specify the path to the RIS Geodatabase as the 1st and only CLI argument.")
+  exit 1
+fi
+
+RIS_GEODATABASE="$( realpath "$1" )"
+
+if [ ! -d "$RIS_GEODATABASE" ]; then
+  (>&2 echo "ERROR: Directory not found at $RIS_GEODATABASE")
+  exit 1
+fi
+
+# Change CWD to this script's directory.
+pushd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null
+
+# source the database connection config.
+. ../.env
+
+# Last chance to kill script... just in case
+(>&2 echo "PostgreSQL Server: ${PGHOST}:${PGPORT}")
+sleep 3
+
+psql --quiet \
+  -f ./sql/createRoadInventorySystemTables.sql \
+  -c 'TRUNCATE ris.road_inventory_system;'
+
+# Upload the data
+ogr2ogr -overwrite -append -preserve_fid -t_srs EPSG:4326 \
+  -f PostgreSQL \
+    "PG:host=${PGHOST} port=${PGPORT} user=${PGUSER} dbname=${PGDATABASE} password=${PGPASSWORD}" \
+  "$RIS_GEODATABASE" -nlt MULTILINESTRING -dim 2 -nln 'ris.road_inventory_system';
+
+psql --quiet \
+  -c 'CLUSTER ris.road_inventory_system;' \
+  -c 'ANALYZE ris.road_inventory_system;'
+
+popd >/dev/null
