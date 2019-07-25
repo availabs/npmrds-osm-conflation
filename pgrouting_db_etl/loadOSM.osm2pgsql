@@ -1,6 +1,8 @@
 #!/bin/bash
 
-# WARNING: This script deletes all pgrouting tables before loading the specified file.
+# https://www.volkerschatz.com/net/osm/osm2pgsql-usage.html
+
+# WARNING: This script deletes all osm tables before loading the specified file.
 
 set -e
 set -a

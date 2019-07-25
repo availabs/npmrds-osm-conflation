@@ -1,0 +1,31 @@
+#!/bin/bash
+
+set -e
+set -a
+
+if [ "$#" -ne 1 ]; then
+  (>&2 echo 'USAGE: Provide the SharedStreet matched NPMRDS partitions directory path as the 1st and only CLI argument.')
+  exit 1
+fi
+
+IN_DIR="$( realpath "$1" )"
+
+if [ ! -d "$IN_DIR" ]; then
+  (>&2 echo "ERROR: No directory found at $IN_DIR")
+  exit 1
+fi
+
+pushd "$( dirname "${BASH_SOURCE[0]}" )/" >/dev/null
+
+. ../.env
+
+CLEAN='--clean'
+
+find "$IN_DIR" -type f |
+  sort |
+  while read -r f; do
+    ./loadSharedStreetsMatchedNPMRDS --shstMatchedFile "$f" "$CLEAN"
+    CLEAN=''
+done
+
+popd >/dev/null

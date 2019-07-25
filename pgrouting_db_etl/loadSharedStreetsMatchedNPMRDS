@@ -23,7 +23,7 @@ const { argv } = yargs
   })
   .wrap(yargs.terminalWidth() / 1.618)
   .option({
-    shstTmcMatchesFile: {
+    shstMatchedFile: {
       demand: true,
       type: 'string'
     },
@@ -34,7 +34,7 @@ const { argv } = yargs
     }
   });
 
-const { shstTmcMatchesFile, clean } = argv;
+const { shstMatchedFile, clean } = argv;
 
 const loadTmcShStMatches = () =>
   new Promise((resolve, reject) => {
@@ -71,7 +71,7 @@ const loadTmcShStMatches = () =>
       const { stdout: tmcShStMatches } = spawn('jq', [
         '-c',
         '.features[].properties',
-        `${shstTmcMatchesFile}`
+        `${shstMatchedFile}`
       ]);
 
       return pipe(
