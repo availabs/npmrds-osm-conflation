@@ -1,0 +1,54 @@
+#!/bin/bash
+
+set -e
+set -a
+
+if [ "$#" -ne 1 ]; then
+  (>&2 echo 'USAGE: You must provide the output shapefile path as the 1st and only CLI argument:')
+  exit 1
+fi
+
+mkdir -p "$( dirname "$1" )"
+
+SHAPEFILE_PATH="$( realpath "$1" )"
+
+pushd "$( dirname "${BASH_SOURCE[0]}" )/" >/dev/null
+
+# source the database connection config.
+. ../.env
+
+
+## npmrds_routing=# \d npmrds_ris_shst_conflation_1 
+##                Table "osm.npmrds_ris_shst_conflation_1"
+##     Column     |        Type         | Collation | Nullable | Default 
+## ---------------+---------------------+-----------+----------+---------
+##  id            | text                |           |          | 
+##  geometry_id   | character varying   |           |          | 
+##  start_seg_idx | integer             |           |          | 
+##  end_seg_idx   | integer             |           |          | 
+##  recomp_idx    | bigint              |           |          | 
+##  ris_fids      | integer[]           |           |          | 
+##  ris_dot_ids   | character varying[] |           |          | 
+##  npmrds_tmcs   | character varying[] |           |          | 
+##  the_geom      | geometry            |           |          | 
+
+SQL="
+  SELECT
+      id,
+      geometry_id AS geom_id,
+      start_seg_idx AS start_seg,
+      end_seg_idx AS end_seg,
+      recomp_idx,
+      ris_fids::TEXT,
+      ris_dot_ids::TEXT AS ris_dotids,
+      npmrds_tmcs::TEXT AS tmcs,
+      the_geom
+    FROM osm.npmrds_ris_shst_conflation_1
+  ;
+"
+
+ogr2ogr -s_srs EPSG:4326 -t_srs EPSG:4326 -f 'ESRI Shapefile' "$SHAPEFILE_PATH" \
+    "PG:host=${PGHOST} port=${PGPORT} user=${PGUSER} dbname=${PGDATABASE} password=${PGPASSWORD}" \
+    -sql "$SQL" -nln 'npmrds_ris_sharedstreets_conflation'
+
+popd >/dev/null
