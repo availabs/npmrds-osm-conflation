@@ -1,0 +1,14 @@
+#!/bin/bash
+
+set -e
+set -a
+
+# Change CWD to this script's directory.
+pushd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null
+
+# source the database connection config.
+. ../.env
+
+pg_dump --clean --if-exists --no-owner --table sharedstreets.tmc_matches > ./sql/sharedstreets.tmc_matches.dump.sql
+
+popd >/dev/null

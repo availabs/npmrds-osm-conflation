@@ -4,12 +4,12 @@
   # --risGeodatabase data/ris/RISDuplicate.gdb \
   # --outDir data/ris/county_geojson
 
-# find data/ris/county_geojson -type f |
-  # sort |
-  # while read -r f; do
-    # ./partitionGeoJSONByBoundingBoxes \
-      # --geoJSON "$f" -N8192 --outDir data/ris/county_geojson_partitions
-  # done
+find data/ris/county_geojson -type f |
+  sort |
+  while read -r f; do
+    ./partitionGeoJSONByBoundingBoxes \
+      --geoJSON "$f" -N1028 --outDir data/ris/county_geojson_partitions
+  done
 
 # find data/ris/county_geojson_partitions -type f |
   # sort |

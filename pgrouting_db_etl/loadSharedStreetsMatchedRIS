@@ -44,6 +44,7 @@ const loadRisShStMatches = () =>
       }
 
       const headers = [
+        'ogc_fid',
         'dot_id',
         'shst_reference_id',
         'shst_geometry_id',
@@ -99,8 +100,10 @@ const loadRisShStMatches = () =>
               sideOfStreet,
               score,
               matchType,
+              pp_ogc_fid,
               pp_dot_id
             }) => ({
+              ogc_fid: pp_ogc_fid || NULL,
               dot_id: pp_dot_id || NULL,
               shst_reference_id: shstReferenceId || NULL,
               shst_geometry_id: shstGeometryId || NULL,

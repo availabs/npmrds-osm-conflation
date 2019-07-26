@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+/* eslint no-param-reassign: 0 */
+
 const { exec } = require('child_process');
 const { openSync, appendFileSync, closeSync } = require('fs');
 const { join } = require('path');
@@ -48,7 +50,7 @@ const { risGeodatabase, outDir } = argv;
 
 mkdirpSync(outDir);
 
-const cmd = `ogr2ogr -f GeoJSON /vsistdout/ ${risGeodatabase} -t_srs 'EPSG:4326' -dim 2 | jq -c '.features[]'`;
+const cmd = `ogr2ogr -f GeoJSON /vsistdout/ ${risGeodatabase} -t_srs 'EPSG:4326' -dim 2 -preserve_fid | jq -c '.features[]'`;
 
 console.error(cmd);
 
@@ -68,12 +70,16 @@ const geoJSONHeader =
 
 pipe(
   risFeatureStream,
-  split(),
-  through(
+  split(JSON.parse),
+  through.obj(
     function countyPartitioner(feature, _, cb) {
       const {
         properties: { County_Name }
-      } = JSON.parse(feature.toString());
+      } = feature;
+
+      feature.properties.ogc_fid = feature.id;
+
+      const d = JSON.stringify(feature);
 
       if (!County_Name) {
         throw new Error(
@@ -90,9 +96,9 @@ pipe(
 
         countyPartitionFDs[normalizedCountyName] = fd;
 
-        appendFileSync(fd, `${geoJSONHeader}${feature}`, 'utf8');
+        appendFileSync(fd, `${geoJSONHeader}${d}`, 'utf8');
       } else {
-        appendFileSync(fd, `,${feature}`, 'utf8');
+        appendFileSync(fd, `,${d}`, 'utf8');
       }
 
       return cb();

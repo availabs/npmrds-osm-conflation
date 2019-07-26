@@ -1,6 +1,5 @@
 BEGIN;
 
---  DROP SCHEMA sharedstreets CASCADE;
 CREATE SCHEMA IF NOT EXISTS sharedstreets;
 
 -- SharedStreets References:
@@ -108,6 +107,7 @@ CREATE INDEX IF NOT EXISTS tmc_matches_tmc_idx
 CLUSTER sharedstreets.tmc_matches USING tmc_matches_tmc_idx;
 
 CREATE TABLE IF NOT EXISTS sharedstreets.ris_matches (
+  ogc_fid                    INTEGER,
   dot_id                     CHARACTER VARYING,
   shst_reference_id          CHARACTER VARYING,
   shst_geometry_id           CHARACTER VARYING,
