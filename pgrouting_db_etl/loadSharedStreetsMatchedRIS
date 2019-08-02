@@ -77,7 +77,7 @@ const loadRisShStMatches = () =>
 
       return pipe(
         risShStMatches,
-        new Throttle({ rate: 100000 }),
+        new Throttle({ rate: 500000 }),
         split(JSON.parse),
         csv
           .format({

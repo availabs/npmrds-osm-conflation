@@ -21,9 +21,10 @@ pushd "$( dirname "${BASH_SOURCE[0]}" )/" >/dev/null
 
 CLEAN='--clean'
 
-find "$IN_DIR" -type f |
+find "$IN_DIR" -type f -name '*\.matched.geojson' |
   sort |
   while read -r f; do
+    echo "loading $( basename "$f" )"
     ./loadSharedStreetsMatchedRIS --shstMatchedFile "$f" "$CLEAN"
     CLEAN=''
 done
