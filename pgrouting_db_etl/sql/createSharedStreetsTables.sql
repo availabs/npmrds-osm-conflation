@@ -1,6 +1,5 @@
 BEGIN;
 
---  DROP SCHEMA sharedstreets CASCADE;
 CREATE SCHEMA IF NOT EXISTS sharedstreets;
 
 -- SharedStreets References:
@@ -106,5 +105,30 @@ CREATE INDEX IF NOT EXISTS tmc_matches_tmc_idx
   ON sharedstreets.tmc_matches (tmc);
 
 CLUSTER sharedstreets.tmc_matches USING tmc_matches_tmc_idx;
+
+CREATE TABLE IF NOT EXISTS sharedstreets.ris_matches (
+  ogc_fid                    INTEGER,
+  dot_id                     CHARACTER VARYING,
+  shst_reference_id          CHARACTER VARYING,
+  shst_geometry_id           CHARACTER VARYING,
+  shst_from_intersection_id  CHARACTER VARYING,
+  shst_to_intersection_id    CHARACTER VARYING,
+  gis_reference_id           CHARACTER VARYING,
+  gis_geometry_id            CHARACTER VARYING,
+  gis_total_segments         INT,
+  gis_segment_index          INT,
+  gis_from_intersection_id   CHARACTER VARYING,
+  gis_to_intersection_id     CHARACTER VARYING,
+  start_side_of_street       CHARACTER VARYING,
+  end_side_of_street         CHARACTER VARYING,
+  side_of_street             CHARACTER VARYING,
+  score                      REAL,
+  match_type                 CHARACTER VARYING
+) WITH (fillfactor=100,autovacuum_enabled=false) ;
+
+CREATE INDEX IF NOT EXISTS ris_matches_dot_id_idx
+  ON sharedstreets.ris_matches (dot_id);
+
+CLUSTER sharedstreets.ris_matches USING ris_matches_dot_id_idx;
 
 COMMIT;

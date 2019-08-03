@@ -11,11 +11,10 @@ const turf = require('@turf/turf');
 const { padStart } = require('lodash');
 
 const cliArgsSpec = {
-  risCountyGeoJSON: {
+  geoJSON: {
     demand: true,
     type: 'string',
-    description:
-      'Path to the RIS GeoDatabase. It is REQUIRED that every record has a populated County_Name field.'
+    description: 'Path to the GeoJSON file to partition.'
   },
   N: {
     demand: false,
@@ -28,7 +27,7 @@ const cliArgsSpec = {
     demand: true,
     type: 'string',
     description:
-      'The directory into which to write the partitioned county geojson files. Creates directory if it does not exist.'
+      'The directory into which to write the partitioned geojson files. Creates directory if it does not exist.'
   }
 };
 
@@ -41,22 +40,22 @@ const { argv } = yargs
   .wrap(yargs.terminalWidth() / 1.618)
   .option(cliArgsSpec)
   .usage(
-    `Uses getKDBoundingBoxes to create bounding box partitions of the county GeoJSON files.
+    `Uses getKDBoundingBoxes to create bounding box partitions of the GeoJSON files.
     Partitioned GeoJSON files are written into the specified --outDir directory.
 
     USAGE:
-    ./partitionRISCountyGeoJSONsByBoundingBoxes --risCountyGeoJSON ./foo/ris.nassau.geojson -N 1028 --outDir bar
+    ./partitionGeoJSONByBoundingBoxes --geoJSON ./foo/bar.geojson -N 1028 --outDir baz
     `
   );
 
-const { risCountyGeoJSON, outDir, N } = argv;
+const { geoJSON, outDir, N } = argv;
 
 mkdirpSync(outDir);
 
 // ===== Step 1: Get the bounding boxes
 const boundingBoxesGeoJSON = JSON.parse(
   execSync(
-    `jq -c '.features[]' ${risCountyGeoJSON} | ${join(
+    `jq -c '.features[]' ${geoJSON} | ${join(
       __dirname,
       `./getKDBoundingBoxes -N${N}`
     )}`
@@ -65,8 +64,13 @@ const boundingBoxesGeoJSON = JSON.parse(
 
 const boundingBoxes = boundingBoxesGeoJSON.features;
 
-const cmd = `jq -c '.features[]' ${risCountyGeoJSON}`;
-const { stdout: risFeatureStream } = exec(cmd, {
+// TODO: Preserve original heading
+const geoJSONHeader = execSync(
+  `ogr2ogr -f GeoJSON /vsistdout/ ${geoJSON} | jq -c '.' | grep -o '^{.*features":\\['`
+).toString();
+
+const cmd = `jq -c '.features[]' ${geoJSON}`;
+const { stdout: featureStream } = exec(cmd, {
   //  maxBuffer
   //    Largest amount of data in bytes allowed on stdout or stderr.
   //    If exceeded, the child process is terminated and any output is truncated.
@@ -76,14 +80,11 @@ const { stdout: risFeatureStream } = exec(cmd, {
 });
 
 const partitionFDs = {};
-const geoJSONHeader =
-  '{"type":"FeatureCollection","name":"roadwayinventory","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[';
-
-const infExtname = extname(risCountyGeoJSON);
+const infExtname = extname(geoJSON);
 const partitionNumPaddingLen = Math.log10(boundingBoxes.length) + 1;
 
 pipe(
-  risFeatureStream,
+  featureStream,
   split(),
   through(
     function bboxPartitioner(line, _, cb) {
@@ -97,7 +98,7 @@ pipe(
             if (!fd) {
               const outf = join(
                 outDir,
-                `${basename(risCountyGeoJSON, infExtname)}.${padStart(
+                `${basename(geoJSON, infExtname)}.${padStart(
                   i,
                   partitionNumPaddingLen,
                   '0'

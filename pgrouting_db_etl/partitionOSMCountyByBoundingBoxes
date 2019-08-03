@@ -1,0 +1,58 @@
+#!/bin/bash
+
+set -e
+set -a
+
+if [ "$#" -ne 2 ]; then
+  (>&2 echo 'USAGE: You must provide two positional CLI argument:')
+  (>&2 echo '         1st: the path to the county OSM files directory')
+  (>&2 echo '         2nd: the output directory')
+  exit 1
+fi
+
+IN_DIR="$( realpath "$1" )"
+# https://stackoverflow.com/a/965072
+
+echo "$2"
+mkdir -p "$2"
+OUT_DIR="$( realpath "$2" )"
+
+pushd "$( dirname "${BASH_SOURCE[0]}" )/" >/dev/null
+
+find "$IN_DIR" -type f |
+  sort |
+  while read -r OSM_FILE; do
+    OSM_FILE_BASE=$(basename -- "$OSM_FILE")
+    OSM_FILE_EXT="${OSM_FILE_BASE##*.}"
+    OSM_FILE_BASE="${OSM_FILE_BASE%.*}"
+
+    echo "$OSM_FILE_BASE"
+
+    OSMOSIS_BBOXES="$(
+      ogr2ogr -f GeoJSON /vsistdout/ "$OSM_FILE" lines 2>/dev/null |
+        jq -c '.features[]' |
+        ./getKDBoundingBoxes -N 4096 --outputFormat 'osmosis'
+    )"
+
+    NUM_PARTITIONS="$( wc -l <<< "$OSMOSIS_BBOXES" )"
+    # Num digits in max partition num
+    PARTITION_NUM_LEN="${#NUM_PARTITIONS}"
+
+    COUNTER=0
+    while read -r left bottom right top; do
+      PARTITION_NUM="$(printf "%0${PARTITION_NUM_LEN}d" $COUNTER)"
+      OUTF="${OUT_DIR}/${OSM_FILE_BASE}.$PARTITION_NUM.$OSM_FILE_EXT"
+
+      osmosis \
+        --read-xml file="${OSM_FILE}" \
+        --tf accept-ways highway=* \
+        --bounding-box "$left" "$bottom" "$right" "$top" \
+            completeWays=yes completeRelations=yes \
+        --write-xml file="$OUTF"
+
+      let COUNTER=COUNTER+1
+    done <<< "$OSMOSIS_BBOXES"
+
+  done
+
+popd >/dev/null

@@ -1,0 +1,48 @@
+#!/bin/bash
+
+# WARNING: This script deletes all pgrouting tables before loading the specified file.
+
+set -e
+set -a
+
+if [ "$#" -ne 1 ]; then
+  (>&2 echo 'USAGE: You must provide the OSM partitions directory path as the 1st and only CLI argument.')
+  exit 1
+fi
+
+OSM_DIR="$( realpath "$1" )"
+
+if [ ! -d "$OSM_DIR" ]; then
+  (>&2 echo "ERROR: No directory found at $OSM_DIR")
+  exit 1
+fi
+
+pushd "$( dirname "${BASH_SOURCE[0]}" )/" >/dev/null
+
+. ../.env
+
+psql -c 'CREATE SCHEMA IF NOT EXISTS pgrouting;'
+
+CLEAN='--clean'
+
+find "$OSM_DIR" -type f |
+  sort |
+  while read -r f; do
+    osm2pgrouting \
+      --dbname "$PGDATABASE" \
+      --host "$PGHOST" \
+      --port "$PGPORT" \
+      --username "$PGUSER" \
+      --password "$PGPASSWORD" \
+      --schema 'pgrouting' \
+      --f "$f" \
+      --conf ./mapconfig_for_cars.xml \
+      --tags \
+      --addnodes \
+      --attributes \
+      "$CLEAN"
+
+    CLEAN=''
+done
+
+popd >/dev/null

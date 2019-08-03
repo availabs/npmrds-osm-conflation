@@ -1,16 +1,18 @@
 #!/bin/bash
 
-# ./partitionRISGeodatabaseIntoCountyGeoJSONs --risGeodatabase data/ris/RISDuplicate.gdb --outDir data/ris/county_geojson
+# ./partitionRISGeodatabaseIntoCountyGeoJSONs \
+  # --risGeodatabase data/ris/RISDuplicate.gdb \
+  # --outDir data/ris/county_geojson
 
-# find data/ris/county_geojson -type f |
-#   sort |
-#   while read -r f; do
-#     ./partitionRISCountyGeoJSONsByBoundingBoxes \
-#       --risCountyGeoJSON "$f" -N8192 --outDir data/ris/county_geojson_partitions
-#   done
-
-find data/ris/county_geojson_partitions -type f |
+find data/ris/county_geojson -type f |
   sort |
   while read -r f; do
-    ../sharedstreets_conflation/shstMatchRIS  "$f" "${f/county_geojson_partitions/shst_matches}"
+    ./partitionGeoJSONByBoundingBoxes \
+      --geoJSON "$f" -N1028 --outDir data/ris/county_geojson_partitions
   done
+
+# find data/ris/county_geojson_partitions -type f |
+  # sort |
+  # while read -r f; do
+    # ../sharedstreets_conflation/shstMatchRIS  "$f" "${f/county_geojson_partitions/shst_matches}"
+  # done

@@ -1,0 +1,57 @@
+#!/bin/bash
+
+# https://www.volkerschatz.com/net/osm/osm2pgsql-usage.html
+
+# WARNING: This script deletes all osm tables before loading the specified file.
+
+set -e
+set -a
+
+if [ "$#" -ne 1 ]; then
+  (>&2 echo 'USAGE: You must provide the OSM file path as the 1st and only CLI argument.')
+  exit 1
+fi
+
+OSM_FILE="$( realpath "$1" )"
+
+if [ ! -f "$OSM_FILE" ]; then
+  (>&2 echo "ERROR: No file found at $OSM_DIR")
+  exit 1
+fi
+
+pushd "$( dirname "${BASH_SOURCE[0]}" )/" >/dev/null
+
+. ../.env
+
+SEARCH_PATH="$(
+  psql -tA -c 'SHOW search_path;'
+)"
+
+echo "$SEARCH_PATH"
+
+psql \
+  -c 'CREATE SCHEMA IF NOT EXISTS osm;' \
+  -c "ALTER ROLE $PGUSER SET search_path = osm, $SEARCH_PATH;" \
+  -c 'CREATE EXTENSION IF NOT EXISTS hstore;'
+
+export PGPASS="$PGPASSWORD"
+
+osm2pgsql \
+  --slim \
+  --create \
+  --prefix='osm' \
+  --latlong \
+  --proj 4326 \
+  --hstore \
+  --cache 4000 \
+  --number-processes 8 \
+  --database "$PGDATABASE" \
+  --host "$PGHOST" \
+  --port "$PGPORT" \
+  --username "$PGUSER" \
+  --database npmrds_routing "$OSM_FILE"
+
+psql \
+  -c "ALTER ROLE $PGUSER SET search_path = $SEARCH_PATH, osm;" \
+
+popd >/dev/null

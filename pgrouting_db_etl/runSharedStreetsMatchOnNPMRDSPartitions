@@ -1,0 +1,32 @@
+#!/bin/bash
+
+#!/bin/bash
+
+# WARNING: This script deletes all pgrouting tables before loading the specified file.
+
+set -e
+set -a
+
+if [ "$#" -ne 2 ]; then
+  (>&2 echo 'USAGE: You must provide two positional CLI argument:')
+  (>&2 echo '         1st: the path to the directory of NPMRDS GeoJSONs files')
+  (>&2 echo '         2nd: the output directory')
+  exit 1
+fi
+
+IN_DIR="$( realpath "$1" )"
+
+mkdir -p "$2"
+OUT_DIR="$( realpath "$2" )"
+
+pushd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null
+
+find "$IN_DIR" -type f |
+  sort |
+  while read -r inf; do
+    base_name="$( basename "$inf" )"
+    outf="${OUT_DIR}/${base_name}"
+    ../sharedstreets_conflation/shstMatchNPMRDS  "$inf" "$outf"
+  done
+
+popd >/dev/null

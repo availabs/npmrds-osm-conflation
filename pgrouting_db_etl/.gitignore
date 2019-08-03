@@ -2,4 +2,6 @@ data/
 spike/
 *.jar
 *.bak
+*.log
+*.dump.sql
 sharedstreets_tiles

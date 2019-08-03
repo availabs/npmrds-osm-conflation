@@ -53,6 +53,7 @@ for (let i = 0; i < tileFiles.length; ++i) {
   const outf = join(outputDir, inf.replace(/pbf$/, 'ndjson'));
 
   if (!existsSync(outf)) {
+    try {
     const fileType = inf.match(/reference|intersection|geometry|metadata/);
     const parser = sharedstreetsPbf[fileType];
 
@@ -61,11 +62,13 @@ for (let i = 0; i < tileFiles.length; ++i) {
     assert(Array.isArray(d));
 
     const ndjson = d.reduce(
-      (acc, row) => `${acc}${JSON.stringify(row)}
-`,
+      (acc, row) => `${acc}${JSON.stringify(row)}\n`,
       ''
     );
 
     writeFileSync(outf, ndjson);
+    } catch (err) {
+      console.error(`WARNING: Error processing ${inf}`)
+    }
   }
 }

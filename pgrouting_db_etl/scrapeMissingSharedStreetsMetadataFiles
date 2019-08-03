@@ -26,7 +26,7 @@ LOCAL_METADATA_FILES="$(
 
 REQUIRED_METADATA_FILES="$(
   find "$SHST_TILES_DIR" -type f -printf '%f\n' |
-    sed 's/reference\|geometry/metadata/g' |
+    sed 's/reference\|geometry\|intersection/metadata/g' |
     sort -u
 )"
 
@@ -39,4 +39,23 @@ if METADATA_FILES_TO_SCRAPE="$(
   done <<< "$METADATA_FILES_TO_SCRAPE"
 fi
 
+LOCAL_INTERSECTION_FILES="$(
+  find "$SHST_TILES_DIR" -type f -name '*intersection*' -printf '%f\n' |
+    sort -u
+)"
+
+REQUIRED_INTERSECTION_FILES="$(
+  find "$SHST_TILES_DIR" -type f -printf '%f\n' |
+    sed 's/reference\|geometry\|metadata/intersection/g' |
+    sort -u
+)"
+
+if INTERSECTION_FILES_TO_SCRAPE="$(
+  grep --invert-match -f <( echo "$LOCAL_INTERSECTION_FILES" | sed '/^$/d' ) <<< "$REQUIRED_INTERSECTION_FILES" 
+)"; then
+  while read -r f; do
+    curl "$SHST_TILES_URL/$f" > "$SHST_TILES_DIR/$f"
+    sleep 1
+  done <<< "$INTERSECTION_FILES_TO_SCRAPE"
+fi
 

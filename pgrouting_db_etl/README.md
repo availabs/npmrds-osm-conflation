@@ -30,3 +30,19 @@ higher resolution tile-hierarchies (7 & 8). This creates more SharedStreet refer
 If this is true, the finer road network splitting will help with RIS/NPMRDS conflation.
 However, we need to make sure that NPMRDS TMC matching accuracy is not affected.
 
+# Processing Errors
+
+I encountered this error while processing all of NYS:
+
+> Unable to build graph: RangeError: index out of range: 261795 + 32 > 261822
+
+Partition sizes were 8192. I reduced them to 1028, and tried
+```
+rm -rf ~/.shst
+```
+
+Seemed to work as far as getting past the error.
+Not sure what the implications are.
+Could it possibly affect sharedstreet IDs?
+
+---
