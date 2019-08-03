@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# Found a planet-osm mirror that hosts the same planet version used by SharedStreets (181224):
+#   https://wiki.openstreetmap.org/wiki/Planet.osm#Planet.osm_mirrors
+#   https://ftpmirror.your.org/pub/openstreetmap/pbf/
+
+set -e
+set -a
+
+mkdir -p data
+
+OSM_VERSION=181224
+
+# # Step 0: Get the data from planet.osm
+if [ ! -f "./data/planet-$OSM_VERSION.osm.pbf" ]; then
+  curl "https://ftpmirror.your.org/pub/openstreetmap/pbf/planet-$OSM_VERSION.osm.pbf" > "./data/planet-$OSM_VERSION.osm.pbf"
+  curl "https://ftpmirror.your.org/pub/openstreetmap/pbf/planet-$OSM_VERSION.osm.pbf.md5" > "./data/planet-$OSM_VERSION.osm.pbf.md5"
+
+  pushd data >/dev/null
+  if ! md5sum --status -c "planet-$OSM_VERSION.osm.pbf.md5"; then
+    (>&2 echo "USAGE: You must specify the county name as the 1st and only CLI argument.")
+    exit 1
+  fi
+  popd >/dev/null
+
+fi
+
+## NYS bounding polygon.
+
+if [ ! -f ./data/new-york.poly ]; then
+  curl 'http://download.geofabrik.de/north-america/us/new-york.poly' > data/new-york.poly
+fi
+
+# TODO: Delete this. Just keep above.
+  pushd data >/dev/null
+  if ! md5sum --status -c "planet-$OSM_VERSION.osm.pbf.md5"; then
+    (>&2 echo "USAGE: You must specify the county name as the 1st and only CLI argument.")
+    exit 1
+  fi
+  popd >/dev/null
+
+
+# Step 1: Extract just NYS from the OSM planet download, removing non-geographic metadata.
+./extractNYS "$OSM_VERSION"
