@@ -1,7 +1,13 @@
-package-lock.json
-node_modules/
-data/
-.env
+bak/
 *.bak
+data/
+*.dump.sql
+.env
 *\.geojson
+*.jar
+*.log
 *\.ndjson
+node_modules/
+package-lock.json
+sharedstreets_tiles
+spike/

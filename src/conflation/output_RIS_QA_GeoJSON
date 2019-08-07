@@ -1,0 +1,76 @@
+#!/usr/bin/env node
+
+const { readFileSync } = require('fs');
+const { join } = require('path');
+const { pipe, through } = require('mississippi');
+const turf = require('@turf/turf');
+
+const levelup = require('levelup');
+const leveldown = require('leveldown');
+const encode = require('encoding-down');
+
+const CONFLATION_PAIRINGS_DB = join(__dirname, 'conflationPairingsDB');
+
+const conflationPairingsDB = levelup(
+  encode(leveldown(CONFLATION_PAIRINGS_DB), {
+    valueEncoding: 'json'
+  })
+);
+
+const d = readFileSync(
+  join(__dirname, '../../data/ris/county_geojson/ris.albany.geojson')
+);
+
+const risShapeFile = JSON.parse(d);
+
+const pairedRISLengths = {};
+
+const getConflationPairingLengths = () =>
+  new Promise((resolve, reject) =>
+    pipe(
+      conflationPairingsDB.createValueStream(),
+      through.obj(function writer(feature, $, cb) {
+        const risSegs = feature.properties.RIS;
+        if (risSegs) {
+          for (let i = 0; i < risSegs.length; ++i) {
+            const id = risSegs[i];
+            pairedRISLengths[id] = pairedRISLengths[id] || 0;
+            pairedRISLengths[id] += turf.length(feature);
+          }
+        }
+
+        return cb();
+      }),
+      err => {
+        if (err) {
+          return reject(err);
+        }
+        return resolve();
+      }
+    )
+  );
+
+(async () => {
+  try {
+    await getConflationPairingLengths();
+    for (let i = 0; i < risShapeFile.features.length; ++i) {
+      const feature = risShapeFile.features[i];
+      const { properties } = feature;
+      const { ogc_fid } = properties;
+      properties.isPaired = pairedRISLengths[ogc_fid] !== undefined;
+      properties.targetLength = turf.length(feature);
+      properties.sourceLength = pairedRISLengths[ogc_fid] || 0;
+      properties.conflationPasses =
+        Math.abs(properties.targetLength - properties.sourceLength) /
+          properties.sourceLength <
+        0.05;
+    }
+
+    console.log(JSON.stringify(risShapeFile));
+  } catch (err) {
+    if (err) {
+      console.error('ERROR');
+      console.error(err);
+    }
+  }
+})();

@@ -1,0 +1,64 @@
+#!/usr/bin/env node
+
+const { join } = require('path');
+const { pipe, through } = require('mississippi');
+
+const levelup = require('levelup');
+const leveldown = require('leveldown');
+const encode = require('encoding-down');
+
+const CONFLATION_PAIRINGS_DB = join(__dirname, 'conflationPairingsDB');
+
+const conflationPairingsDB = levelup(
+  encode(leveldown(CONFLATION_PAIRINGS_DB), {
+    valueEncoding: 'json'
+  })
+);
+
+const geoJSONOpen =
+  '{"type":"FeatureCollection","name":"networkconflation","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[';
+
+const geoJSONClose = ']}';
+
+let preDelim = '';
+
+const seenGeomIds = new Set();
+
+const outputPairedShStGeoms = () =>
+  new Promise((resolve, reject) =>
+    pipe(
+      conflationPairingsDB.createReadStream(),
+      through.obj(
+        async function writer({ key: geomId, value: feature }, $, cb) {
+          seenGeomIds.add(geomId.replace(/\..*/, ''));
+
+          if (feature.properties.RIS && feature.properties.RIS.length > 1) {
+            this.push(`${preDelim}${JSON.stringify(feature)}`);
+            preDelim = ',';
+          }
+
+          return cb();
+        },
+        function flush(cb) {
+          this.push(geoJSONClose);
+          return cb();
+        }
+      ),
+      process.stdout,
+      err => {
+        if (err) {
+          return reject(err);
+        }
+        return resolve();
+      }
+    )
+  );
+
+(async () => {
+  process.stdout.write(geoJSONOpen);
+  try {
+    await outputPairedShStGeoms();
+  } catch (err) {
+    console.error(err);
+  }
+})();

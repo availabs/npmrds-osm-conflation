@@ -1,0 +1,281 @@
+#!/usr/bin/env node
+
+/* eslint no-continue: 0, prefer-destructuring: 0 */
+const SPLIT_BUFF = 10 / 1000;
+
+const { join } = require('path');
+const { pipe, through } = require('mississippi');
+const _ = require('lodash');
+const { sync: rimrafSync } = require('rimraf');
+const turf = require('@turf/turf');
+
+const levelup = require('levelup');
+const leveldown = require('leveldown');
+const encode = require('encoding-down');
+
+const PRECISION = 6;
+const KILOMETERS = {
+  units: 'kilometers'
+};
+
+const SHST_GEOGRAPHY_DB = join(
+  __dirname,
+  '../../data/sharedstreets/shst_tiles_leveldb/shstGeographyDB'
+);
+
+const TARGET_MAPS_SEGEMENT_OFFSETS_DB = join(
+  __dirname,
+  'targetMapsSegmentOffsets'
+);
+
+const CONFLATION_PAIRINGS_DB = join(__dirname, 'conflationPairingsDB');
+
+const shstGeographyDB = levelup(
+  encode(leveldown(SHST_GEOGRAPHY_DB), { valueEncoding: 'json' })
+);
+
+const targetMapsSegmentsOffsetsDB = levelup(
+  encode(leveldown(TARGET_MAPS_SEGEMENT_OFFSETS_DB), { valueEncoding: 'json' })
+);
+
+rimrafSync(CONFLATION_PAIRINGS_DB);
+const conflationPairingsDB = levelup(
+  encode(leveldown(CONFLATION_PAIRINGS_DB), {
+    valueEncoding: 'json'
+  })
+);
+
+// const geoJSONHeader =
+// '{"type":"FeatureCollection","name":"networkconflation","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[';
+
+// let sentFirstFeature = false;
+
+pipe(
+  targetMapsSegmentsOffsetsDB.createReadStream(),
+  through.obj(
+    async function loader(
+      { key: shstGeometryId, value: targetMapsSegmentOffsets },
+      $,
+      cb
+    ) {
+      // Build up the processed list by
+      //   * snapping to terminal vertices and
+      //   * removing pairings that do not meet a min shared dist threshold
+      let shstGeometry;
+
+      try {
+        shstGeometry = await shstGeographyDB.get(shstGeometryId);
+      } catch (err) {
+        if (err.type === 'NotFoundError') {
+          console.error(
+            `WARNING: no geometry found in shstGeographyDB for ${shstGeometryId}`
+          );
+          return cb();
+        }
+        throw new Error(err);
+      }
+
+      const shstGeometryLength = turf.length(shstGeometry, KILOMETERS);
+
+      const processedList = [];
+      for (let i = 0; i < targetMapsSegmentOffsets.length; ++i) {
+        const tmso = targetMapsSegmentOffsets[i];
+
+        // targetMapsSegmentOffsets fields:
+        //   * shstGeometryId,
+        //   * geomLength,
+        //   * target_map,
+        //   * target_map_id,
+        //   * POFF,
+        //   * NOFF,
+
+        const processedTMSO = _.pick(tmso, ['target_map', 'target_map_id']);
+
+        processedTMSO.startDist =
+          tmso.POFF > SPLIT_BUFF ? _.round(tmso.POFF, PRECISION) : 0;
+
+        processedTMSO.endDist =
+          tmso.NOFF > SPLIT_BUFF
+            ? _.round(shstGeometryLength - tmso.NOFF, PRECISION)
+            : shstGeometryLength;
+
+        if (
+          tmso.geomLength <= SPLIT_BUFF ||
+          processedTMSO.endDist - processedTMSO.startDist >= SPLIT_BUFF
+        ) {
+          processedList.push(processedTMSO);
+        }
+      }
+
+      if (!processedList.length) {
+        return cb();
+      }
+
+      const splitterOffsets = _(
+        processedList.map(({ startDist, endDist }) => {
+          const offsets = [0];
+          offsets.push(startDist);
+          offsets.push(endDist);
+          offsets.push(shstGeometryLength);
+          return offsets;
+        })
+      )
+        .flatten()
+        .filter(v => v !== null)
+        .sortBy(_.toNumber)
+        .sortedUniq()
+        .value();
+
+      const segmentLineStrings = [];
+
+      for (let i = 1; i < splitterOffsets.length; ++i) {
+        const startDist = splitterOffsets[i - 1];
+        const endDist = splitterOffsets[i];
+
+        const segment = turf.lineSliceAlong(
+          shstGeometry,
+          startDist,
+          endDist,
+          KILOMETERS
+        );
+
+        segment.properties = Object.assign({}, shstGeometry.properties, {
+          totalSegments: splitterOffsets.length - 1,
+          segmentIndex: i,
+          startDist,
+          endDist
+        });
+
+        segmentLineStrings.push(segment);
+      }
+
+      // Restore the original start and end coords
+      _.first(segmentLineStrings).geometry.coordinates[0] =
+        shstGeometry.geometry.coordinates[0];
+
+      _.last(segmentLineStrings).geometry.coordinates[
+        _.last(segmentLineStrings).geometry.coordinates.length - 1
+      ] = _.last(shstGeometry.geometry.coordinates);
+
+      for (let i = 0; i < processedList.length; ++i) {
+        const {
+          startDist: tmsStartDist,
+          endDist: tmsEndDist,
+          target_map,
+          target_map_id
+        } = processedList[i];
+
+        for (let j = 0; j < segmentLineStrings.length; ++j) {
+          const segment = segmentLineStrings[j];
+          const {
+            properties: { startDist, endDist }
+          } = segment;
+
+          if (
+            target_map_id === '120-08047' &&
+            shstGeometryId === 'd1e8845d19580bcb4031e90e9a50eb51'
+          ) {
+            console.error('------------------------');
+            console.error(JSON.stringify(processedList[i], null, 4));
+            console.error(
+              JSON.stringify(
+                {
+                  tmsStartDist,
+                  tmsEndDist,
+                  startDist,
+                  endDist
+                },
+                null,
+                4
+              )
+            );
+            console.error(
+              tmsStartDist <= startDist &&
+                tmsStartDist < endDist &&
+                tmsEndDist > startDist
+            );
+          }
+
+          if (
+            tmsStartDist <= startDist &&
+            tmsStartDist < endDist &&
+            tmsEndDist > startDist
+          ) {
+            segment.properties[target_map] =
+              segment.properties[target_map] || [];
+            // segment.properties[target_map].push(processedList[i]);
+            segment.properties[target_map].push(target_map_id);
+            segment.properties[target_map] = _.uniq(
+              segment.properties[target_map]
+            );
+
+            // if (segment.properties[target_map]) {
+            // console.error(
+            // 'INVARIANT BROKEN: More than one target_map segment per source map segment.'
+            // );
+            // console.error(`  shstGeometry:  ${shstGeometryId}`);
+            // console.error(`  target_map:    ${target_map}`);
+            // console.error(
+            // `  target_map_ids: ${segment.properties[target_map]}, ${target_map_id}`
+            // );
+            // } else {
+            // segment.properties[target_map] = target_map_id;
+            // }
+          }
+        }
+      }
+
+      const batchPut = segmentLineStrings.map(segment => ({
+        type: 'put',
+        key: `${shstGeometryId}${
+          segment.properties.totalSegments > 1
+            ? `.${segment.properties.segmentIndex}`
+            : ''
+        }`,
+        value: segment
+      }));
+
+      try {
+        await conflationPairingsDB.batch(batchPut);
+      } catch (err) {
+        console.error('ERROR in batch put');
+        throw err;
+      }
+
+      // const feature = JSON.stringify(segmentLineStrings[i]);
+      // for (let i = 0; i < segmentLineStrings.length; ++i) {
+      // const feature = JSON.stringify(segmentLineStrings[i]);
+
+      // if (!sentFirstFeature) {
+      // this.push(geoJSONHeader);
+
+      // this.push(`${feature}`);
+      // sentFirstFeature = true;
+      // } else {
+      // this.push(`,${feature}`);
+      // }
+      // }
+
+      return cb();
+    }
+    // function finish(cb) {
+    // this.push(']}');
+    // return cb();
+    // }
+  ),
+  process.stdout,
+  err => {
+    if (err.code !== 'EPIPE') {
+      console.error(
+        'ERROR encountered while loading targetMapsSegmentOffsets DB.'
+      );
+      console.error(
+        `    Deleting the corruped database at ${CONFLATION_PAIRINGS_DB}`
+      );
+      console.error();
+      console.error(err);
+      rimrafSync(CONFLATION_PAIRINGS_DB);
+      process.exit(1);
+    }
+  }
+);

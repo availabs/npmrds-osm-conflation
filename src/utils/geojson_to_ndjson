@@ -1,7 +1,0 @@
-#!/bin/bash
-
-# Example usage
-#   ./geojson_to_features_ndjson < osm_36001.geojson > osm_36001.ndjson
- 
-jq -c ".features[]" 
-

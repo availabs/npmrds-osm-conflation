@@ -1,0 +1,358 @@
+#!/usr/bin/env node
+
+/* eslint no-use-before-define: 0 */
+
+// https://github.com/sharedstreets/sharedstreets-ref-system#core-concepts
+
+const { spawn } = require('child_process');
+const { join } = require('path');
+const { pipe } = require('mississippi');
+const split = require('split2');
+const csv = require('fast-csv');
+const { from: copyFrom } = require('pg-copy-streams');
+
+const yargs = require('yargs');
+const { query, pool, end } = require('../../src/services/db_service');
+
+const NULL = 'NULL';
+
+const cliArgsSpec = {
+  tilesetNDJSONDir: {
+    demand: true,
+    type: 'string'
+  },
+  clean: {
+    type: 'boolean',
+    description: 'Truncate tables before loading',
+    default: false
+  }
+};
+
+const { argv } = yargs
+  .strict()
+  .parserConfiguration({
+    'camel-case-expansion': false,
+    'flatten-duplicate-arrays': false
+  })
+  .example(
+    './load_tileset_ndjson_into_db --tilesetNDJSONDir ./sharedstreets_ndjson --clean'
+  )
+  .wrap(yargs.terminalWidth() / 1.618)
+  .option(cliArgsSpec);
+
+const { tilesetNDJSONDir, clean } = argv;
+
+(async () => {
+  try {
+    await query('CREATE SCHEMA IF NOT EXISTS sharedstreets;');
+
+    if (clean) {
+      await query(`
+        BEGIN;
+        TRUNCATE sharedstreets.reference;
+        TRUNCATE sharedstreets.intersection;
+        TRUNCATE sharedstreets.geometry;
+        TRUNCATE sharedstreets.metadata;
+        COMMIT;
+      `);
+    }
+
+    await loadReferences();
+    await loadIntersections();
+    await loadGeometries();
+    await loadMetadata();
+  } catch (err) {
+    console.error(err);
+  } finally {
+    await end();
+  }
+})();
+
+function loadReferences() {
+  return new Promise((resolve, reject) => {
+    const dir = `${join(process.cwd(), tilesetNDJSONDir)}/`;
+
+    pool.connect((err, client, done) => {
+      if (err) {
+        return reject(err);
+      }
+
+      const headers = [
+        'id',
+        'geometry_id',
+        'form_of_way',
+        'location_references'
+      ];
+
+      const dbCopyStream = client.query(
+        copyFrom(
+          `COPY sharedstreets.reference(${headers}) FROM STDIN WITH NULL '${NULL}' CSV HEADER`
+        )
+      );
+
+      const { stdout: metadataStream } = spawn(
+        'cat',
+        [`${dir}*.reference.*.ndjson`, "| sed '/^$/d' | sort -u"],
+        { shell: true }
+      );
+
+      return pipe(
+        metadataStream,
+        split(JSON.parse),
+        csv
+          .format({
+            headers
+          })
+          .transform(({ id, geometryId, formOfWay, locationReferences }) => ({
+            id: id || NULL,
+            geometry_id: geometryId || NULL,
+            form_of_way: formOfWay || NULL,
+            location_references: locationReferences
+              ? JSON.stringify(locationReferences)
+              : NULL
+          })),
+        dbCopyStream,
+        copyErr => {
+          done();
+          if (copyErr) {
+            return reject(copyErr);
+          }
+          return resolve();
+        }
+      );
+    });
+  });
+}
+
+async function loadIntersections() {
+  await new Promise((resolve, reject) => {
+    const dir = `${join(process.cwd(), tilesetNDJSONDir)}/`;
+
+    pool.connect((err, client, done) => {
+      if (err) {
+        return reject(err);
+      }
+
+      const headers = [
+        'id',
+        'node_id',
+        'inbound_reference_ids',
+        'outbound_reference_ids',
+        'lon',
+        'lat'
+      ];
+
+      const dbCopyStream = client.query(
+        copyFrom(
+          `COPY sharedstreets.intersection(${headers}) FROM STDIN WITH NULL '${NULL}' CSV HEADER`
+        )
+      );
+
+      const { stdout: metadataStream } = spawn(
+        'cat',
+        [`${dir}*.intersection.*.ndjson`, "| sed '/^$/d' | sort -u"],
+        { shell: true }
+      );
+
+      return pipe(
+        metadataStream,
+        split(JSON.parse),
+        csv
+          .format({
+            headers
+          })
+          .transform(
+            ({
+              id,
+              nodeId,
+              inboundReferenceIds,
+              outboundReferenceIds,
+              lon,
+              lat
+            }) => ({
+              id: id || NULL,
+              node_id: nodeId || NULL,
+              inbound_reference_ids: Array.isArray(inboundReferenceIds)
+                ? `{${inboundReferenceIds}}`
+                : NULL,
+              outbound_reference_ids: Array.isArray(outboundReferenceIds)
+                ? `{${outboundReferenceIds}}`
+                : NULL,
+              lon: lon || NULL,
+              lat: lat || NULL
+            })
+          ),
+        dbCopyStream,
+        copyErr => {
+          done();
+          if (copyErr) {
+            return reject(copyErr);
+          }
+          return resolve();
+        }
+      );
+    });
+  });
+
+  await query(`
+    UPDATE sharedstreets.intersection
+      SET the_geom = ST_SetSRID(ST_MakePoint(lon, lat), 4326)
+    ;
+  `);
+}
+
+async function loadGeometries() {
+  await new Promise((resolve, reject) => {
+    const dir = `${join(process.cwd(), tilesetNDJSONDir)}/`;
+
+    pool.connect((err, client, done) => {
+      if (err) {
+        return reject(err);
+      }
+
+      const headers = [
+        'id',
+        'from_intersection_id',
+        'to_intersection_id',
+        'forward_reference_id',
+        'back_reference_id',
+        'road_class',
+        'lonlats'
+      ];
+
+      const dbCopyStream = client.query(
+        copyFrom(
+          `COPY sharedstreets.geometry(${headers}) FROM STDIN WITH NULL '${NULL}' CSV HEADER`
+        )
+      );
+
+      const { stdout: metadataStream } = spawn(
+        'cat',
+        [`${dir}*.geometry.*.ndjson`, "| sed '/^$/d' | sort -u"],
+        { shell: true }
+      );
+
+      return pipe(
+        metadataStream,
+        split(JSON.parse),
+        csv
+          .format({
+            headers
+          })
+          .transform(
+            ({
+              id,
+              fromIntersectionId,
+              toIntersectionId,
+              forwardReferenceId,
+              backReferenceId,
+              roadClass,
+              lonlats
+            }) => ({
+              id: id || NULL,
+              from_intersection_id: fromIntersectionId || NULL,
+              to_intersection_id: toIntersectionId || NULL,
+              forward_reference_id: forwardReferenceId || NULL,
+              back_reference_id: backReferenceId || NULL,
+              road_class: roadClass || NULL,
+              lonlats:
+                Array.isArray(lonlats) && lonlats.length ? `{${lonlats}}` : NULL
+            })
+          ),
+        dbCopyStream,
+        copyErr => {
+          done();
+          if (copyErr) {
+            return reject(copyErr);
+          }
+          return resolve();
+        }
+      );
+    });
+  });
+
+  const sql = `
+    UPDATE sharedstreets.geometry
+      SET the_geom = t.the_geom
+      FROM (
+        SELECT
+            id,
+            ST_SetSRID(
+              ST_MakeLine(
+                ST_MakePoint(
+                  coords[1],
+                  coords[2]
+                ) ORDER BY coords_idx
+              ), 4326
+            ) the_geom
+          FROM (
+            SELECT
+                id,
+                array_agg(elem ORDER BY nr) AS coords,
+                MIN(nr) AS coords_idx
+              FROM (
+                SELECT
+                    id,
+                    a.elem,
+                    a.nr
+                  FROM sharedstreets.geometry, UNNEST(lonlats) WITH ORDINALITY a(elem, nr)
+              ) AS t
+              GROUP BY id, (nr+1)/2
+          ) AS t
+          GROUP BY id
+      ) AS t
+      WHERE geometry.id = t.id
+    ;
+  `;
+
+  await query(sql);
+}
+
+async function loadMetadata() {
+  return new Promise((resolve, reject) => {
+    const dir = `${join(process.cwd(), tilesetNDJSONDir)}/`;
+
+    pool.connect((err, client, done) => {
+      if (err) {
+        return reject(err);
+      }
+
+      const headers = ['geometry_id', 'gis_metadata', 'osm_metadata', 'name'];
+
+      const dbCopyStream = client.query(
+        copyFrom(
+          `COPY sharedstreets.metadata(${headers}) FROM STDIN WITH NULL '${NULL}' CSV HEADER`
+        )
+      );
+
+      const { stdout: metadataStream } = spawn(
+        'cat',
+        [`${dir}*.metadata.*.ndjson`, "| sed '/^$/d' | sort -u"],
+        { shell: true }
+      );
+
+      return pipe(
+        metadataStream,
+        split(JSON.parse),
+        csv
+          .format({
+            headers
+          })
+          .transform(({ geometryId, gisMetadata, osmMetadata, name }) => ({
+            geometry_id: geometryId || NULL,
+            gis_metadata: gisMetadata ? JSON.stringify(gisMetadata) : NULL,
+            osm_metadata: osmMetadata ? JSON.stringify(osmMetadata) : NULL,
+            name: name || NULL
+          })),
+        dbCopyStream,
+        copyErr => {
+          done();
+          if (copyErr) {
+            return reject(copyErr);
+          }
+          return resolve();
+        }
+      );
+    });
+  });
+}
