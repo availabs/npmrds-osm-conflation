@@ -1,12 +1,11 @@
 #!/bin/bash
 
 set -e
-set -a
 
 if [ "$#" -ne 2 ]; then
   (>&2 echo 'USAGE: You must provide two positional CLI argument:')
-  (>&2 echo '         1st: the county GeoJSON partitions directory.')
-  (>&2 echo '         2nd: the output directory')
+  (>&2 echo '         1st: the county GeoJSONs directory.')
+  (>&2 echo '         2nd: the partitioned county GeoJSONs directory')
   exit 1
 fi
 

@@ -1,0 +1,16 @@
+#!/bin/bash
+
+set -e
+
+DATA_DIR="$( realpath "$( dirname "${BASH_SOURCE[0]}" )/../../data/tiger/" )"
+
+pushd  "$DATA_DIR" >/dev/null
+
+ogr2ogr \
+  -f 'GeoJSON' \
+  -t_srs EPSG:4326 \
+  tl_2018_us_county.ny.geojson \
+  /vsizip/tl_2018_us_county.zip \
+  -where "STATEFP='36'"
+
+popd >/dev/null

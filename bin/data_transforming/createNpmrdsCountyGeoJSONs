@@ -1,0 +1,165 @@
+#!/usr/bin/env node
+
+const { openSync, appendFileSync, closeSync } = require('fs');
+const { exec, execSync } = require('child_process');
+const { join, dirname, basename } = require('path');
+const yargs = require('yargs');
+const { pipe, through } = require('mississippi');
+const split = require('split2');
+const _ = require('lodash');
+const csv = require('fast-csv');
+const { sync: mkdirpSync } = require('mkdirp');
+
+const cliArgsSpec = {
+  tmcIdentificationFile: {
+    demand: true,
+    type: 'string'
+  },
+  npmrdsShapefileZipFile: {
+    demand: true,
+    type: 'string'
+  },
+  outDir: {
+    demand: true,
+    type: 'string',
+    description:
+      'The directory into which to write the county geojson files. Creates directory if it does not exist.'
+  }
+};
+
+const geoJSONOpen =
+  '{"type":"FeatureCollection","name":"npmrds_shapefile","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[';
+
+const geoJSONClose = ']}';
+
+const { argv } = yargs
+  .strict()
+  .parserConfiguration({
+    'camel-case-expansion': false,
+    'flatten-duplicate-arrays': false
+  })
+  .wrap(yargs.terminalWidth() / 1.618)
+  .option(cliArgsSpec);
+
+const { tmcIdentificationFile, npmrdsShapefileZipFile, outDir } = argv;
+
+mkdirpSync(outDir);
+
+const getTmcMetadata = () => {
+  const tmcMetadata = {};
+  return new Promise((resolve, reject) =>
+    pipe(
+      csv.parseFile(tmcIdentificationFile, { headers: true, trim: true }),
+      through.obj(async function loader(d, $, cb) {
+        const { tmc } = d;
+
+        tmcMetadata[tmc] = d;
+
+        return cb();
+      }),
+      err => {
+        if (err) {
+          return reject(err);
+        }
+
+        return resolve(tmcMetadata);
+      }
+    )
+  );
+};
+
+const createCountyGeoJSONs = tmcMetadata => {
+  const shpFileDir = dirname(npmrdsShapefileZipFile);
+  const shpFileName = basename(npmrdsShapefileZipFile);
+  const cwd = join(process.cwd(), shpFileDir);
+
+  // If the shapefile zip has a subdirectory, we need to get it.
+  let subDir;
+
+  try {
+    const zipContents = execSync(`zipinfo -1 ${npmrdsShapefileZipFile} "*/"`, {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', null]
+    });
+
+    subDir = `/${_(zipContents.split())
+      .map(s => _.trim(s))
+      .uniq()
+      .sortBy(s => -s.length)
+      .first()}`;
+  } catch (err) {
+    subDir = '';
+  }
+
+  const countyPartitionFDs = {};
+
+  return new Promise((resolve, reject) => {
+    const { stdout: featuresStream, stderr } = exec(
+      `ogr2ogr -f GeoJSON -t_srs EPSG:4326 /vsistdout/ /vsizip/${shpFileName}${subDir} | jq --compact-output '.features[]'`,
+      { cwd, maxBuffer: Infinity }
+    );
+
+    stderr.pipe(process.stderr);
+
+    return pipe(
+      featuresStream,
+      split(JSON.parse),
+      through.obj(
+        function countyPartitioner(feature, $, cb) {
+          const {
+            properties: { County, Tmc }
+          } = feature;
+
+          if (!County) {
+            throw new Error('ERROR: Empty County field for TMC entry.');
+          }
+
+          const metadata = tmcMetadata[Tmc];
+          Object.assign(feature.properties, metadata);
+
+          const line = JSON.stringify(feature);
+
+          const normalizedCountyName = County.toLowerCase().replace(/ /, '_');
+
+          let fd = countyPartitionFDs[normalizedCountyName];
+
+          if (!fd) {
+            const outf = join(outDir, `npmrds.${normalizedCountyName}.geojson`);
+            fd = openSync(outf, 'a');
+
+            countyPartitionFDs[normalizedCountyName] = fd;
+
+            appendFileSync(fd, `${geoJSONOpen}${line}`, 'utf8');
+          } else {
+            appendFileSync(fd, `,${line}`, 'utf8');
+          }
+
+          return cb();
+        },
+        function finish(cb) {
+          Object.keys(countyPartitionFDs).forEach(County => {
+            const fd = countyPartitionFDs[County];
+
+            appendFileSync(fd, geoJSONClose);
+
+            closeSync(fd);
+          });
+
+          return cb();
+        }
+      ),
+      err => {
+        if (err) {
+          return reject(err);
+        }
+
+        return resolve();
+      }
+    );
+  });
+};
+
+(async () => {
+  const tmcMetadata = await getTmcMetadata();
+  await createCountyGeoJSONs(tmcMetadata);
+})();

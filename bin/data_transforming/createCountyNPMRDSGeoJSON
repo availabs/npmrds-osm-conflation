@@ -5,7 +5,7 @@ set -a
 
 pushd "$( dirname "${BASH_SOURCE[0]}" )/" >/dev/null
 
-SHP_ZIP_PATH=./data/npmrds/inrix_expanded.zip
+SHP_ZIP_PATH=../../data/npmrds/inrix_expanded.zip
 
 if [ "$#" -ne 1 ]; then
   (>&2 echo "USAGE: You must specify the county name as the 1st and only CLI argument.")
@@ -14,21 +14,12 @@ fi
 
 COUNTY="${1^^}"
 
-# Create a temporary work directory
-TMP_WORK_DIR="$( mktemp -d )";
-
-# Delete the TMP_WORK_DIR when script finishes
-function finish {
-  rm -rf "$TMP_WORK_DIR"
-}
-trap finish EXIT
-
-# Extract the ZIP archive into a temp dir
-7za e "$SHP_ZIP_PATH" -o"$TMP_WORK_DIR" >/dev/null
-
-ogr2ogr -s_srs EPSG:4326 -t_srs EPSG:4326 -f GeoJSON /vsistdout/ "$TMP_WORK_DIR" \
-    -where "county = '$COUNTY'" |
-    jq -c .
+ogr2ogr \
+  -t_srs EPSG:4326 \
+  -f GeoJSON \
+  /vsistdout/ \
+  "/vsizip/$SHP_ZIP_PATH" \
+  -where "county = '$COUNTY'"
 
 popd >/dev/null
 

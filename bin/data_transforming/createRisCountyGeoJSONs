@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+/* eslint no-param-reassign: 0 */
+
 const { exec } = require('child_process');
 const { openSync, appendFileSync, closeSync } = require('fs');
 const { join } = require('path');
@@ -9,11 +11,11 @@ const yargs = require('yargs');
 const { sync: mkdirpSync } = require('mkdirp');
 
 const cliArgsSpec = {
-  npmrdsShapefile: {
+  risGeodatabaseZip: {
     demand: true,
     type: 'string',
     description:
-      'Path to the NPMRDS shapefile.'
+      'Path to the RIS GeoDatabase. It is REQUIRED that every record has a populated County_Name field.'
   },
   outDir: {
     demand: true,
@@ -32,30 +34,25 @@ const { argv } = yargs
   .wrap(yargs.terminalWidth() / 1.618)
   .option(cliArgsSpec)
   .usage(
-    `Creates County partitions of the NPMRDS shapefile.
+    `Creates County partitions of the RIS geodatabase.
     One GeoJSON file is created per county.
     GeoJSON files are written into the specified --outDir directory.
+    SRS transformed to CRS84 (ESPG4326).
 
     USAGE:
-      ogr2ogr -f GeoJSON /vsistdout/ -t_srs data/npmrds/inrix_expanded |
+      ogr2ogr -f GeoJSON /vsistdout/ -t_srs data/ris/RISDuplicate.gdb |
         jq -c '.features[]' |
-        ./partitionNPMRDSIntoCountyGeoJSONs --outDir foo
+        ./partitionRISGeodatabaseIntoCountyGeoJSONs --outDir foo
     `
   );
 
-const { npmrdsShapefile, outDir } = argv;
+const { risGeodatabaseZip, outDir } = argv;
 
 mkdirpSync(outDir);
 
-const cmd = `ogr2ogr -f GeoJSON /vsistdout/ ${npmrdsShapefile} -t_srs 'EPSG:4326' | jq -c '.features[]'`;
+const cmd = `ogr2ogr -f GeoJSON /vsistdout/ /vsizip/${risGeodatabaseZip} -t_srs 'EPSG:4326' -dim 2 -preserve_fid | jq -c '.features[]'`;
 
-console.error(cmd);
-
-const { stdout: npmrdsFeatureStream } = exec(cmd, {
-  //  maxBuffer
-  //    Largest amount of data in bytes allowed on stdout or stderr.
-  //    If exceeded, the child process is terminated and any output is truncated.
-  //
+const { stdout: risFeatureStream } = exec(cmd, {
   //  Better to crash hard on out of memory than to get cryptic "pipe closed prematurely" error.
   maxBuffer: Infinity
 });
@@ -63,49 +60,52 @@ const { stdout: npmrdsFeatureStream } = exec(cmd, {
 const countyPartitionFDs = {};
 
 const geoJSONHeader =
-  '{"type":"FeatureCollection","name":"npmrds_shapefile","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":['
+  '{"type":"FeatureCollection","name":"roadwayinventory","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[';
 
 pipe(
-  npmrdsFeatureStream,
-  split(),
-  through(
+  risFeatureStream,
+  split(JSON.parse),
+  through.obj(
     function countyPartitioner(feature, _, cb) {
       const {
-        properties: { County }
-      } = JSON.parse(feature.toString());
+        properties: { County_Name }
+      } = feature;
 
-      if (!County) {
+      feature.properties.ogc_fid = feature.id;
+
+      const d = JSON.stringify(feature);
+
+      if (!County_Name) {
         throw new Error(
-          'ERROR: Empty County field for TMC entry.'
+          'ERROR: Empty Column_Name field for RIS Geodatabase entry.'
         );
       }
 
-      const normalizedCountyName = County.toLowerCase().replace(/ /, '_');
+      const normalizedCountyName = County_Name.toLowerCase().replace(/ /, '_');
 
       let fd = countyPartitionFDs[normalizedCountyName];
       if (!fd) {
-        const outf = join(outDir, `npmrds.${normalizedCountyName}.geojson`);
+        const outf = join(outDir, `ris.${normalizedCountyName}.geojson`);
         fd = openSync(outf, 'a');
 
         countyPartitionFDs[normalizedCountyName] = fd;
 
-        appendFileSync(fd, `${geoJSONHeader}${feature}`, 'utf8');
+        appendFileSync(fd, `${geoJSONHeader}${d}`, 'utf8');
       } else {
-        appendFileSync(fd, `,${feature}`, 'utf8');
+        appendFileSync(fd, `,${d}`, 'utf8');
       }
 
       return cb();
     },
     function finish(cb) {
-      Object.keys(countyPartitionFDs).forEach(County => {
-        const fd = countyPartitionFDs[County];
+      Object.keys(countyPartitionFDs).forEach(county => {
+        const fd = countyPartitionFDs[county];
 
         appendFileSync(fd, ']}');
 
         closeSync(fd);
       });
 
-      console.error('done');
       return cb();
     }
   ),
