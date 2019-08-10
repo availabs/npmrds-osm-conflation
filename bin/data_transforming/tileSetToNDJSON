@@ -12,6 +12,23 @@ const yargs = require('yargs');
 const { sync: mkdirpSync } = require('mkdirp');
 const { sync: rimrafSync } = require('rimraf');
 
+const cliArgsSpec = {
+    tilesetDir: {
+      demand: true,
+      type: 'string'
+    },
+    leveldbDir: {
+      demand: true,
+      type: 'string'
+    },
+    clean: {
+      type: 'boolean',
+      description: 'Empty the leveldbDir before beginning.',
+      default: false
+    }
+  };
+
+
 const { argv } = yargs
   .strict()
   .parserConfiguration({
@@ -22,21 +39,7 @@ const { argv } = yargs
   .example(
     './tileSetToNDJSON --tilesetDir sharedstreets_tiles/albany --outputDir sharedstreets_ndjson --clean'
   )
-  .option({
-    tilesetDir: {
-      demand: true,
-      type: 'string'
-    },
-    outputDir: {
-      demand: true,
-      type: 'string'
-    },
-    clean: {
-      type: 'boolean',
-      description: 'Empty the outputDir before beginning.',
-      default: false
-    }
-  });
+  .option(cliArgsSpec);
 
 const { tilesetDir, outputDir, clean } = argv;
 

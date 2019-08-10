@@ -21,7 +21,7 @@ const cliArgsSpec = {
     type: 'number',
     description:
       '(Roughly) Max number of features per bounding box. Passed to ./getKDBoundingBoxes.',
-    default: 2 ** 14
+    default: 2 ** 12
   },
   outDir: {
     demand: true,
