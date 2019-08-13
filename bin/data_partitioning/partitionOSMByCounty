@@ -15,7 +15,6 @@ OSM_FILE="$( realpath "$1" )"
 mkdir -p "$2"
 OUT_DIR="$( realpath "$2" )"
 
-
 pushd "$( dirname "${BASH_SOURCE[0]}" )/" >/dev/null
 
 # source the database connection config.

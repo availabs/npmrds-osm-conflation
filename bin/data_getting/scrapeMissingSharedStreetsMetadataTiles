@@ -1,0 +1,40 @@
+#!/bin/bash
+
+set -e
+
+if [ "$#" -ne 2 ]; then
+  (>&2 echo 'USAGE: You must provide two positional CLI argument:')
+  (>&2 echo '         1st: OSM planet version')
+  (>&2 echo '         2nd: the SharedStreets tiles directory')
+  exit 1
+fi
+
+OSM_PLANET_VER="$1"
+SHST_TILES_DIR="$2"
+
+SHST_TILES_URL="https://tiles.sharedstreets.io/osm/planet-$OSM_PLANET_VER"
+
+if [ ! -d "$SHST_TILES_DIR" ]; then
+  echo "ERROR: No sharedstreets_tiles directory."
+  exit 1
+fi
+
+LOCAL_METADATA_FILES="$(
+  find "$SHST_TILES_DIR" -type f -name '*metadata*' -printf '%f\n' |
+    sort -u
+)"
+
+REQUIRED_METADATA_FILES="$(
+  find "$SHST_TILES_DIR" -type f -printf '%f\n' |
+    sed 's/reference\|geometry\|intersection/metadata/g' |
+    sort -u
+)"
+
+if METADATA_FILES_TO_SCRAPE="$(
+  grep --invert-match -f <( echo "$LOCAL_METADATA_FILES" | sed '/^$/d' ) <<< "$REQUIRED_METADATA_FILES" 
+)"; then
+  while read -r f; do
+    curl "$SHST_TILES_URL/$f" > "$SHST_TILES_DIR/$f"
+    sleep 1
+  done <<< "$METADATA_FILES_TO_SCRAPE"
+fi

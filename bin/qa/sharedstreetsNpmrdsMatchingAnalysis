@@ -1,0 +1,30 @@
+#!/bin/bash
+
+set -e
+
+pushd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null
+
+echo 'county,road_segment_count,matched_count,unmatched_count'
+
+find ../../data/npmrds/county_geojson -type f |
+  sort |
+  while read -r county_geojson; do
+    county="$( sed 's/.*npmrds\.//; s/\.geojson//' <<< "$county_geojson" )"
+
+    TMC_COUNT=$(
+      jq '.features[]|.properties.tmc' "$county_geojson" |
+        sort -u |
+        wc -l
+    )
+    MATCHED_COUNT=$(
+      jq \
+        '.features[]|.properties.pp_tmc' \
+        ../../data/sharedstreets/shst_matched_npmrds/npmrds."${county}"*\.matched.geojson |
+      sort -u |
+      wc -l
+    )
+
+    unmatched=$(( TMC_COUNT - MATCHED_COUNT ))
+
+    echo "$county,$TMC_COUNT,$MATCHED_COUNT,$unmatched"
+  done

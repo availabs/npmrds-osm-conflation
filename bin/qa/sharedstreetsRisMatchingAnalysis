@@ -1,0 +1,31 @@
+#!/bin/bash
+
+set -e
+
+pushd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null
+
+echo 'county,road_segment_count,matched_count,unmatched_count'
+
+find ../../data/ris/county_geojson -type f |
+  sort |
+  while read -r county_geojson; do
+    county="$( sed 's/.*ris\.//; s/\.geojson//' <<< "$county_geojson" )"
+
+    SEGMENT_COUNT=$(
+      jq '.features[]|.properties.ogc_fid' "$county_geojson" |
+        sort -u |
+        wc -l
+    )
+
+    MATCHED_COUNT=$(
+      jq \
+        '.features[]|.properties.pp_ogc_fid' \
+        ../../data/sharedstreets/shst_matched_ris/ris."${county}"*\.matched.geojson |
+      sort -u |
+      wc -l
+    )
+
+    unmatched=$(( SEGMENT_COUNT - MATCHED_COUNT ))
+
+    echo "$county,$SEGMENT_COUNT,$MATCHED_COUNT,$unmatched"
+  done

@@ -2,6 +2,8 @@
 SHELL := /bin/bash
 
 MKFILE_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
+OSM_PLANET_VER=181224
+SHST_TILES_DIR=data/sharedstreets/shst_tiles_pbf
 
 # https://www.gnu.org/software/make/manual/make.html#Special-Targets
 # The targets which .SECONDARY depends on are treated as intermediate files,
@@ -54,4 +56,53 @@ data/sharedstreets/shst_matched_ris:
 		
 sharedstreets_match: data/sharedstreets/shst_matched_npmrds data/sharedstreets/shst_matched_ris
 
+data/sharedstreets/shst_tiles_pbf:
+	./bin/data_getting/copySharedStreetsTileCache \
+		"${HOME}/.shst/cache/tiles/osm/planet-${OSM_PLANET_VER}" \
+		"${SHST_TILES_DIR}"
 
+scrapeMissingSharedStreetsGeometryFiles:
+	./bin/data_getting/scrapeMissingSharedStreetsGeometryFiles \
+		--tilesetDir ./data/sharedstreets/shst_tiles_pbf \
+		--shstMatchedNpmrdsDir data/npmrds/shst_matched \
+		--shstMatchedRisDir data/ris/shst_matched
+
+scrapeMissingSharedStreetsMetadataTiles:
+	./bin/data_getting/scrapeMissingSharedStreetsMetadataTiles "${OSM_PLANET_VER}" "${SHST_TILES_DIR}"
+
+scrapeMissingSharedStreetsIntersectionTiles:
+	./bin/data_getting/scrapeMissingSharedStreetsIntersectionTiles "${OSM_PLANET_VER}" "${SHST_TILES_DIR}"
+
+data/leveldb/shstGeometry:
+	./bin/data_loading_leveldb/loadShStGeometryTiles \
+		--tilesetDir data/sharedstreets/shst_tiles_pbf \
+		--leveldbDir data/leveldb/shstGeometry \
+		--clean
+
+data/leveldb/shstReference:
+	./bin/data_loading_leveldb/loadShStReferenceTiles \
+		--tilesetDir data/sharedstreets/shst_tiles_pbf \
+		--leveldbDir data/leveldb/shstReference \
+		--clean
+
+data/leveldb/shstMetadata:
+	./bin/data_loading_leveldb/loadShStMetadataTiles \
+		--tilesetDir data/sharedstreets/shst_tiles_pbf \
+		--leveldbDir data/leveldb/shstMetadata \
+		--clean
+
+load_sharedstreets_tiles_into_leveldb: data/leveldb/shstGeometry data/leveldb/shstReference data/leveldb/shstMetadata
+
+data/leveldb/shstMatchedNpmrds:
+	./bin/data_loading_leveldb/loadSharedStreetsMatchedNPMRDS \
+		--shstMatchedDir ./data/sharedstreets/shst_matched_npmrds \
+		--leveldbDir ./data/leveldb/shstMatchedNpmrds \
+		--clean
+
+data/leveldb/shstMatchedRis:
+	./bin/data_loading_leveldb/loadSharedStreetsMatchedRIS \
+		--shstMatchedDir ./data/sharedstreets/shst_matched_ris \
+		--leveldbDir ./data/leveldb/shstMatchedRis \
+		--clean
+
+load_sharedstreets_match_output: data/leveldb/shstMatchedNpmrds data/leveldb/shstMatchedRis
