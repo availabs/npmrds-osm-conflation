@@ -1,2 +1,5 @@
 # Get the unique wayIds from the SharedStreets extract output:
 jq '.features|map(.properties.metadata.osmMetadata.waySections|map(.wayId))|flatten[]' < data/shst.albany.extracted.out.geojson | sed 's/"//g' | sort -nu
+
+# Stream geojson features
+sed 's/^.*features":\[//g; s/^/\[/g; s/}$//g' conflation.albany-npmrds.2.geojson | jq -cn --stream 'fromstream(1|truncate_stream(inputs))'

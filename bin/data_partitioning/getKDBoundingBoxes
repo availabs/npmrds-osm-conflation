@@ -17,6 +17,8 @@ const {
   uniq,
   uniqWith,
   findLast,
+  min,
+  max,
   head,
   tail
 } = require('lodash');
@@ -82,10 +84,10 @@ pipe(
       // ---------------------------------------------------------------------------
       const featureIds = Object.keys(featureBoundingBoxes);
 
-      const minX = Math.min(...featureIds.map(i => featureBoundingBoxes[i][0]));
-      const minY = Math.min(...featureIds.map(i => featureBoundingBoxes[i][1]));
-      const maxX = Math.max(...featureIds.map(i => featureBoundingBoxes[i][2]));
-      const maxY = Math.max(...featureIds.map(i => featureBoundingBoxes[i][3]));
+      const minX = min(featureIds.map(i => featureBoundingBoxes[i][0]));
+      const minY = min(featureIds.map(i => featureBoundingBoxes[i][1]));
+      const maxX = max(featureIds.map(i => featureBoundingBoxes[i][2]));
+      const maxY = max(featureIds.map(i => featureBoundingBoxes[i][3]));
 
       const partitions = partitionIds(featureIds);
       const boundingBoxes = createBoundingBoxes(
@@ -153,7 +155,7 @@ function partitionIds(ids, dimension = 0) {
 
   // If the partition coord is the max, we end up in an infinite recursion.
   //   Get the next largest coord for the partition coord.
-  if (partitionCoord === Math.max(...dimensionCoords)) {
+  if (partitionCoord === max(dimensionCoords)) {
     partitionCoord = findLast(dimensionCoords, c => c < partitionCoord);
   }
 

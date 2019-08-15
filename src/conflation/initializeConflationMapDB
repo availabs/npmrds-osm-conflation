@@ -1,0 +1,135 @@
+#!/usr/bin/env node
+
+/* eslint no-continue: 0 */
+
+const { join } = require('path');
+const { pipe, through } = require('mississippi');
+const { sync: rimrafSync } = require('rimraf');
+
+const levelup = require('levelup');
+const leveldown = require('leveldown');
+const encode = require('encoding-down');
+
+const SHST_GEOGRAPHY_DB = join(__dirname, '../../data/leveldb/shstGeometry/');
+
+const CONFLATION_MAP_DB = join(__dirname, '../../data/leveldb/conflationMap/');
+
+rimrafSync(CONFLATION_MAP_DB);
+
+const shstGeometryDB = levelup(
+  encode(leveldown(SHST_GEOGRAPHY_DB), { valueEncoding: 'json' })
+);
+
+const conflationMapDB = levelup(
+  encode(leveldown(CONFLATION_MAP_DB), { valueEncoding: 'json' })
+);
+
+pipe(
+  shstGeometryDB.createValueStream(),
+  through.obj(async function splitter(feature, $, cb) {
+    const {
+      properties: {
+        id: geometryId,
+        fromIntersectionId,
+        toIntersectionId,
+        forwardReferenceId,
+        backReferenceId
+      },
+      geometry
+    } = feature;
+    if (forwardReferenceId) {
+      const properties = {
+        geometryId,
+        referenceId: forwardReferenceId,
+        fromIntersectionId,
+        toIntersectionId,
+        reversed: false
+      };
+
+      this.push(Object.assign({}, feature, { properties }));
+    }
+
+    if (backReferenceId) {
+      const properties = {
+        geometryId,
+        referenceId: backReferenceId,
+        fromIntersectionId: toIntersectionId,
+        toIntersectionId: fromIntersectionId,
+        reversed: true
+      };
+
+      const reversedCoords = geometry.coordinates.slice().reverse();
+
+      this.push(
+        Object.assign({}, feature, {
+          properties,
+          geometry: { type: 'LineString', coordinates: reversedCoords }
+        })
+      );
+    }
+    return cb();
+  }),
+  through.obj(async function loader(feature, $, cb) {
+    try {
+      const {
+        properties: {
+          referenceId,
+          fromIntersectionId,
+          toIntersectionId,
+          reversed
+        },
+        geometry: { coordinates }
+      } = feature;
+
+      let preferedFeature = feature;
+
+      try {
+        const other = await conflationMapDB.get(referenceId);
+        // Prefer original geometries to ones we created by reversing
+        if (reversed !== other.properties.reversed) {
+          preferedFeature = reversed ? other : feature;
+        } else if (
+          // The terminal intersections are the same
+          other.properties.fromIntersectionId === fromIntersectionId &&
+          other.properties.toIntersectionId === toIntersectionId
+        ) {
+          // choose the geometry with the higher resolution
+          if (coordinates.length < other.geometry.coordinates.length) {
+            preferedFeature = other;
+          }
+        } else {
+          // Cannot pick, so throw
+          const a = JSON.stringify(feature, null, 4);
+          const b = JSON.stringify(other, null, 4);
+          const msg = `INVARIANT BROKEN: reference refers to different road segments\n${a}\n${b}`;
+          throw new Error(msg);
+        }
+      } catch (err) {
+        if (err.type !== 'NotFoundError') {
+          throw new Error(err);
+        }
+      }
+
+      await conflationMapDB.put(referenceId, preferedFeature);
+
+      return cb();
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
+  }),
+  err => {
+    if (err) {
+      console.error(
+        'ERROR encountered while loading targetMapsSegmentOffsets DB.'
+      );
+      console.error(
+        `    Deleting the corruped database at ${CONFLATION_MAP_DB}`
+      );
+      console.error();
+      console.error(err);
+      rimrafSync(CONFLATION_MAP_DB);
+      process.exit(1);
+    }
+  }
+);

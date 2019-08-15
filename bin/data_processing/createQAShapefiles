@@ -1,0 +1,143 @@
+#!/bin/bash
+
+set -e
+
+if [ "$#" -ne 1 ]; then
+  (>&2 echo 'USAGE: You must provide the qa files directory 1st and only CLI argument.')
+  exit 1
+fi
+
+IN_DIR="$( realpath "$1" )"
+
+if [ ! -d "$IN_DIR" ]; then
+  (>&2 echo "ERROR: No directory found at $IN_DIR")
+  exit 1
+fi
+
+# NPMRDS_QA_SHP=npmrds_conflation_qa 
+# rm -rf "$NPMRDS_QA_SHP"
+
+# NPMRDS_COL_RENAMING='
+  # s/active_start_date/active_srt/g
+  # s/active_end_date/active_end/g
+  # s/targetLength/target_len/g
+  # s/sourceLength/source_len/g
+  # s/len_diff_ratio/len_diff_r/g
+  # s/intersection/intersectn/g
+  # s/start_latitude/start_lat/g
+  # s/start_longitude/start_lon/g
+  # s/end_latitude/end_lat/g
+  # s/end_longitude/end_lon/g
+  # s/timezone_name/timezone/g
+# '
+
+# find "$IN_DIR" -type f -name 'npmrds*.geojson' |
+	# sort |
+	# while read -r f; do
+		# sed -i "$NPMRDS_COL_RENAMING" "$f"
+
+		# if ! [ -f "$NPMRDS_QA_SHP" ]; then
+			# ogr2ogr -f 'ESRI Shapefile' "$NPMRDS_QA_SHP" "$f"
+		# else
+			# ogr2ogr -f 'ESRI Shapefile' -update -append "$NPMRDS_QA_SHP" "$f" -nln "$NPMRDS_QA_SHP"
+		# fi
+	# done
+
+RIS_COL_RENAMING='
+	s/AADT_Actual/AADT_Actua/g
+	s/AADT_Single_Unit/AADT_Singl/g
+	s/AADT_current_yr_est/AADT_curre/g
+	s/AVG_PCT_Trucks/AVG_PCT_Tr/g
+	s/Access_Control/Access_Con/g
+	s/Actual_PCT_Trucks/Actual_PCT/g
+	s/Actual_PCT_Year/Actual_P_1/g
+	s/Avg_Bump_Height/Avg_Bump_H/g
+	s/Begin_Description/Begin_Desc/g
+	s/Bridge_Disp_Desc/Bridge_Dis/g
+	s/Bump_Avg_Year/Bump_Avg_Y/g
+	s/Bump_CNT_Year/Bump_CNT_Y/g
+	s/Bump_Max_Year/Bump_Max_Y/g
+	s/County_Name/County_Nam/g
+	s/County_Order/County_Ord/g
+	s/Crack_Seal_Yr/Crack_Seal/g
+	s/DDHV_FACTOR/DDHV_FACTO/g
+	s/Discontinuous_Road_Flag/Discontinu/g
+	s/End_Description/End_Descri/g
+	s/Extra_Bridges/Extra_Brid/g
+	s/F1991_Fed_Aid_Primary/F1991_Fed_/g
+	s/Federal_Aid_Highway__STP_ER_/Federal_Ai/g
+	s/Functional_Class/Functional/g
+	s/Grouped_Road_Flag/Grouped_Ro/g
+	s/HPMS_Sample_ID/HPMS_Sampl/g
+	s/HPMS_UA_Code/HPMS_UA_Co/g
+	s/I_NO_Of_Bumps/I_NO_Of_Bu/g
+	s/I_Rut_Depth/I_Rut_Dept/g
+	s/Jurisdiction/Jurisdicti/g
+	s/Last_Actual_CNTYR/Last_Actua/g
+	s/Last_Overlay/Last_Overl/g
+	s/Max_Bump_Height/Max_Bump_H/g
+	s/Median_Type/Median_Typ/g
+	s/Median_Width/Median_Wid/g
+	s/Muni_Geocode/Muni_Geoco/g
+	s/Muni_Owner_Geocode/Muni_Owner/g
+	s/Muni_Owner_Name/Muni_Own_2/g
+	s/Muni_Owner_Type/Muni_Own_1/g
+	s/Offramp_From_Roadway/Offramp_Fr/g
+	s/Onramp_From_Roadway/Onramp_Fro/g
+	s/Overlap_Hierarchy/Overlap_Hi/g
+	s/Owning_Jurisdicti/Owning_Jur/g
+	s/Pavement_Layer/Pavement_L/g
+	s/Pavement_Type_Value/Pavement_T/g
+	s/Percent_Peak_Combp/Percent__1/g
+	s/Percent_Peak_Single_Unit/Percent_Pe/g
+	s/Posted_Speed_Limit/Posted_Spe/g
+	s/Primary_Dir_Lanes/Primary_Di/g
+	s/RIS_Divided_Area_ID/RIS_Divide/g
+	s/Railroad_Crossing/Railroad_C/g
+	s/Ramp_Alpha_Suffix/Ramp_Alpha/g
+	s/Ramp_Dest_Co_Order/Ramp_Des_1/g
+	s/Ramp_Dest_DOT_ID/Ramp_Dest_/g
+	s/Ramp_Dest_MP/Ramp_Des_2/g
+	s/Ramp_Interchange_Code/Ramp_Inter/g
+	s/Ramp_Orig_Co_Order/Ramp_Ori_1/g
+	s/Ramp_Orig_DOT_ID/Ramp_Orig_/g
+	s/Ramp_Orig_MP/Ramp_Ori_2/g
+	s/Reservation_Desc/Reservatio/g
+	s/Roadway_Type/Roadway_Ty/g
+	s/Scenic_Byway/Scenic_Byw/g
+	s/Section_Length/Section_Le/g
+	s/Segment_Type/Segment_Ty/g
+	s/Shape_Length/Shape_Leng/g
+	s/Shoulder_Type/Shoulder_T/g
+	s/Shoulder_Width/Shoulder_W/g
+	s/Station_Num/Station_Nu/g
+	s/Sub_Base_Type/Sub_Base_T/g
+	s/Tandem_Truck/Tandem_Tru/g
+	s/Toll_Facility/Toll_Facil/g
+	s/Total_Lanes/Total_Lane/g
+	s/Total_Through_Lane_Width/Total_Thro/g
+	s/Trail_Crossing/Trail_Cros/g
+	s/Urban_Area_Code_ID/Urban_Area/g
+	s/Urban_Area_Name/Urban_Ar_1/g
+	s/manyRisSegs/manyRisSeg/g
+  s/targetLength/target_len/g
+  s/sourceLength/source_len/g
+	s/twoway_lenatio/bilen_diff/g
+	s/twoway_len_diff_ratio/bilen_diff/g
+  s/len_diff_ratio/len_diff/g
+'
+
+RIS_QA_SHP=ris_conflation_qa 
+rm -rf "$RIS_QA_SHP"
+
+find "$IN_DIR" -type f -name 'ris*.geojson' |
+  sort |
+  while read -r f; do
+    sed -i "$RIS_COL_RENAMING" "$f"
+
+    if ! [ -f "$RIS_QA_SHP" ]; then
+      ogr2ogr -f 'ESRI Shapefile' "$RIS_QA_SHP" "$f"
+    else
+      ogr2ogr -f 'ESRI Shapefile' -update -append "$RIS_QA_SHP" "$f" -nln "$RIS_QA_SHP"
+    fi
+  done

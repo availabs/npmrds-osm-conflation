@@ -1,0 +1,139 @@
+#!/usr/bin/env node
+
+/* eslint no-continue: 0 */
+
+const { readFileSync } = require('fs');
+const { join } = require('path');
+const { pipe, through } = require('mississippi');
+const _ = require('lodash');
+const { nearestPointOnLine } = require('@turf/turf');
+const { point } = require('@turf/helpers');
+
+const levelup = require('levelup');
+const leveldown = require('leveldown');
+const encode = require('encoding-down');
+
+const KILOMETERS = {
+  units: 'kilometers'
+};
+
+const SHST_GEOGRAPHY_DB = join(
+  __dirname,
+  '../../data/sharedstreets/shst_tiles_leveldb/shstGeographyDB'
+);
+
+const SHST_MATCHED_NPMRDS_DB = join(
+  __dirname,
+  '../../data/npmrds/shst_matched_leveldb/shstMatchedTMCs'
+);
+
+const shstGeographyDB = levelup(
+  encode(leveldown(SHST_GEOGRAPHY_DB), { valueEncoding: 'json' })
+);
+
+const shstMatchedTMCsDB = levelup(
+  encode(leveldown(SHST_MATCHED_NPMRDS_DB), { valueEncoding: 'json' })
+);
+
+const tmcIsPrimary = JSON.parse(
+  readFileSync(join(__dirname, './tmc_isprimary.json'))
+);
+
+const identifyReverseDirTmcs = () => {
+  const reversedDirTmcs = {};
+  return new Promise((resolve, reject) => {
+    pipe(
+      shstMatchedTMCsDB.createValueStream(),
+      through.obj(async function loader(matches, $, cb) {
+        const geometryIds = _(matches)
+          .map('properties.shstGeometryId')
+          .uniq()
+          .filter()
+          .value();
+
+        const shstGeometries = (await Promise.all(
+          geometryIds.map(async id => {
+            try {
+              return await shstGeographyDB.get(id);
+            } catch (err) {
+              if (err.type === 'NotFoundError') {
+                console.error(
+                  `WARNING: no geometry found in shstGeographyDB for ${id}`
+                );
+                return null;
+              }
+              console.error('shstGeographyDB.get');
+              throw new Error(err);
+            }
+          })
+        )).reduce((acc, geom) => {
+          if (geom) {
+            acc[geom.properties.id] = geom;
+          }
+          return acc;
+        }, {});
+
+        for (let i = 0; i < matches.length; ++i) {
+          const {
+            properties: { shstGeometryId, pp_tmc: tmc },
+            geometry: { coordinates }
+          } = matches[i];
+
+          if (tmcIsPrimary[tmc] === 0) {
+            continue;
+          }
+
+          const startPoint = point(_.first(coordinates));
+          const endPoint = point(_.last(coordinates));
+
+          const geom = shstGeometries[shstGeometryId];
+
+          if (!geom) {
+            continue;
+          }
+
+          const snappedStart = nearestPointOnLine(geom, startPoint, KILOMETERS);
+          const snappedEnd = nearestPointOnLine(geom, endPoint, KILOMETERS);
+
+          // console.log(JSON.stringify({ snappedStart, snappedEnd }, null, 4));
+
+          const startDist = snappedStart.properties.location;
+          const endDist = snappedEnd.properties.location;
+
+          reversedDirTmcs[tmc] = reversedDirTmcs[tmc] || {};
+          reversedDirTmcs[tmc][shstGeometryId] = startDist > endDist;
+        }
+
+        return cb();
+      }),
+      err => {
+        if (err) {
+          return reject(err);
+        }
+
+        return resolve(reversedDirTmcs);
+      }
+    );
+  });
+};
+
+(async () => {
+  const reversedDirTmcs = await identifyReverseDirTmcs();
+
+  const tmcShapeFile = JSON.parse(
+    readFileSync(
+      join(__dirname, '../../data/npmrds/county_geojson/npmrds.albany.geojson')
+    )
+  );
+
+  for (let i = 0; i < tmcShapeFile.features.length; ++i) {
+    const { properties } = tmcShapeFile.features[i];
+    const { Tmc } = properties;
+
+    properties.geomDirs = _.get(reversedDirTmcs, Tmc, null);
+    properties.someReversed = _.some(properties.geomDirs);
+    properties.allReversed = _.every(properties.geomDirs);
+  }
+
+  console.log(JSON.stringify(tmcShapeFile));
+})();

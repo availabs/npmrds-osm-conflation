@@ -84,9 +84,10 @@ pipe(
       const normalizedCountyName = County_Name.toLowerCase().replace(/ /, '_');
 
       let fd = countyPartitionFDs[normalizedCountyName];
-      if (!fd) {
+
+      if (!Number.isFinite(fd)) {
         const outf = join(outDir, `ris.${normalizedCountyName}.geojson`);
-        fd = openSync(outf, 'a');
+        fd = openSync(outf, 'w');
 
         countyPartitionFDs[normalizedCountyName] = fd;
 

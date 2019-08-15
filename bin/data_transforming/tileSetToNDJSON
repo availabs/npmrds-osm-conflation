@@ -17,7 +17,7 @@ const cliArgsSpec = {
       demand: true,
       type: 'string'
     },
-    leveldbDir: {
+    outputDir: {
       demand: true,
       type: 'string'
     },

@@ -21,6 +21,11 @@ lib/sharedstreets-builder-0.3.1.jar:
 	@wget --quiet --directory-prefix=lib \
 		https://github.com/sharedstreets/sharedstreets-builder/releases/download/0.3.1/sharedstreets-builder-0.3.1.jar
 
+lib/lev2:
+	curl -L https://github.com/maxlath/lev2/archive/v3.0.0.tar.gz > lib/lev2-3.0.0.tar.gz
+	tar zxf lib/lev2-3.0.0.tar.gz --directory lib/ && rm -f lib/lev2-3.0.0.tar.gz
+	mv lib/lev2-3.0.0 lib/lev2
+
 init: node_modules lib/sharedstreets-builder-0.3.1.jar
 
 data/npmrds/county_geojson: init
@@ -60,6 +65,14 @@ data/sharedstreets/shst_tiles_pbf:
 	./bin/data_getting/copySharedStreetsTileCache \
 		"${HOME}/.shst/cache/tiles/osm/planet-${OSM_PLANET_VER}" \
 		"${SHST_TILES_DIR}"
+
+# This one's just for creating a directory of easily inspectable tiles.
+#   Not really part of the pipeline.
+data/sharedstreets/shst_tiles_ndjson:
+	./bin/data_transforming/tileSetToNDJSON \
+		--tilesetDir "${SHST_TILES_DIR}" \
+		--outputDir data/sharedstreets/shst_tiles_ndjson \
+		--clean
 
 scrapeMissingSharedStreetsGeometryFiles:
 	./bin/data_getting/scrapeMissingSharedStreetsGeometryFiles \

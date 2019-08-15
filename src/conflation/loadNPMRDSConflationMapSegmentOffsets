@@ -2,7 +2,6 @@
 
 /* eslint no-continue: 0 */
 
-const { readFileSync } = require('fs');
 const { join } = require('path');
 const { pipe, through } = require('mississippi');
 const _ = require('lodash');
@@ -18,79 +17,83 @@ const KILOMETERS = {
   units: 'kilometers'
 };
 
-const SHST_GEOGRAPHY_DB = join(
-  __dirname,
-  '../../data/sharedstreets/shst_tiles_leveldb/shstGeographyDB'
-);
+const SPLIT_BUFF_KM = 10 / 1000;
+
+const CONFLATION_MAP_DB = join(__dirname, '../../data/leveldb/conflationMap/');
 
 const SHST_MATCHED_NPMRDS_DB = join(
   __dirname,
-  '../../data/npmrds/shst_matched_leveldb/shstMatchedTMCs'
+  '../../data/leveldb/',
+  'shstMatchedNpmrds'
 );
 
-const TARGET_MAPS_SEGEMENT_OFFSETS_DB = join(
+const CONFLATION_MAPS_SEGEMENT_OFFSETS_DB = join(
   __dirname,
-  'targetMapsSegmentOffsets'
+  '../../data/leveldb/',
+  'conflationMapsSegmentOffsets'
 );
 
-const shstGeographyDB = levelup(
-  encode(leveldown(SHST_GEOGRAPHY_DB), { valueEncoding: 'json' })
+const conflationMapDB = levelup(
+  encode(leveldown(CONFLATION_MAP_DB), { valueEncoding: 'json' })
 );
 
 const shstMatchedTMCsDB = levelup(
   encode(leveldown(SHST_MATCHED_NPMRDS_DB), { valueEncoding: 'json' })
 );
 
-const targetMapsSegmentsOffsetsDB = levelup(
-  encode(leveldown(TARGET_MAPS_SEGEMENT_OFFSETS_DB), { valueEncoding: 'json' })
+const conflationMapsSegmentsOffsetsDB = levelup(
+  encode(leveldown(CONFLATION_MAPS_SEGEMENT_OFFSETS_DB), {
+    valueEncoding: 'json'
+  })
 );
 
-const tmcIsPrimary = JSON.parse(
-  readFileSync(join(__dirname, './tmc_isprimary.json'))
-);
+const tmcIsPrimary = require('./tmc_isprimary.json');
 
 pipe(
   shstMatchedTMCsDB.createValueStream(),
   through.obj(async function loader(matches, $, cb) {
-    const geometryIds = _(matches)
-      .map('properties.shstGeometryId')
-      .uniq()
-      .filter()
-      .value();
+    const refIds = [
+      ...matches.reduce((acc, { properties: { shstReferenceId } }) => {
+        if (shstReferenceId) {
+          acc.add(shstReferenceId);
+        }
+        return acc;
+      }, new Set())
+    ];
 
-    const shstGeometries = (await Promise.all(
-      geometryIds.map(async id => {
+    const conflationMapFeatures = (await Promise.all(
+      refIds.map(async id => {
         try {
-          return await shstGeographyDB.get(id);
+          const feature = await conflationMapDB.get(id);
+          return { id, feature };
         } catch (err) {
           if (err.type === 'NotFoundError') {
-            console.error(
-              `WARNING: no geometry found in shstGeographyDB for ${id}`
+            console.warn(
+              `WARNING: no feature found in conflationMapDB for ${id}`
             );
             return null;
           }
-          console.error('shstGeographyDB.get');
           throw new Error(err);
         }
       })
-    )).reduce((acc, geom) => {
-      if (geom) {
-        acc[geom.properties.id] = geom;
+    )).reduce((acc, d) => {
+      if (d) {
+        acc[d.id] = d.feature;
       }
       return acc;
     }, {});
 
-    const targetMapsSegmentOffsetsLists = (await Promise.all(
-      geometryIds.map(async id => {
+    const conflationMapsSegmentOffsetsLists = (await Promise.all(
+      refIds.map(async id => {
         let list;
 
         try {
-          list = await targetMapsSegmentsOffsetsDB.get(id);
+          list = await conflationMapsSegmentsOffsetsDB.get(id);
         } catch (err) {
           if (err.type === 'NotFoundError') {
             list = [];
           } else {
-            console.error('targetMapsSegmentsOffsetsDB.get');
+            console.error('conflationMapsSegmentsOffsetsDB.get');
             throw new Error(err);
           }
         }
@@ -104,7 +107,7 @@ pipe(
 
     for (let i = 0; i < matches.length; ++i) {
       const {
-        properties: { shstGeometryId, pp_tmc: tmc },
+        properties: { shstReferenceId, pp_tmc: tmc },
         geometry: { coordinates }
       } = matches[i];
 
@@ -115,45 +118,53 @@ pipe(
       const startPoint = point(_.first(coordinates));
       const endPoint = point(_.last(coordinates));
 
-      const geom = shstGeometries[shstGeometryId];
+      const geom = conflationMapFeatures[shstReferenceId];
 
       if (!geom) {
         continue;
       }
 
-      // console.error(JSON.stringify({ startPoint, endPoint, geom }, null, 4));
-      const offsetList = targetMapsSegmentOffsetsLists[shstGeometryId];
-
       const geomLength = length(geom, KILOMETERS);
+
+      const offsetList = conflationMapsSegmentOffsetsLists[shstReferenceId];
 
       const snappedStart = nearestPointOnLine(geom, startPoint, KILOMETERS);
       const snappedEnd = nearestPointOnLine(geom, endPoint, KILOMETERS);
 
-      // console.log(JSON.stringify({ snappedStart, snappedEnd }, null, 4));
-
       const startDist = snappedStart.properties.location;
       const endDist = snappedEnd.properties.location;
 
+      if (startDist > endDist) {
+        // Ignore. Small segment.
+        if (startDist - endDist < SPLIT_BUFF_KM) {
+          continue;
+        }
+        const m = JSON.stringify(matches, null, 4);
+        const msg = `INVARIANT BROKEN: startDist > endDist\n${m}`;
+        throw new Error(msg);
+      }
+
       const segmentOffsets = {
-        shstGeometryId,
+        shstReferenceId,
         geomLength,
         target_map: 'NPMRDS',
         target_map_id: tmc,
-        POFF: Math.min(startDist, endDist),
-        NOFF: geomLength - Math.max(startDist, endDist)
+        POFF: startDist,
+        NOFF: geomLength - endDist,
+        reversed: startDist > endDist
       };
 
       offsetList.push(segmentOffsets);
     }
 
-    const batchPut = geometryIds.map(id => ({
+    const batchPut = refIds.map(id => ({
       type: 'put',
       key: id,
-      value: _.uniqWith(targetMapsSegmentOffsetsLists[id], _.isEqual)
+      value: _.uniqWith(conflationMapsSegmentOffsetsLists[id], _.isEqual)
     }));
 
     try {
-      await targetMapsSegmentsOffsetsDB.batch(batchPut);
+      await conflationMapsSegmentsOffsetsDB.batch(batchPut);
     } catch (err) {
       console.error('ERROR in batch put');
       throw err;
@@ -164,14 +175,14 @@ pipe(
   err => {
     if (err) {
       console.error(
-        'ERROR encountered while loading targetMapsSegmentOffsets DB.'
+        'ERROR encountered while loading conflationMapsSegmentOffsets DB.'
       );
       console.error(
-        `    Deleting the corruped database at ${TARGET_MAPS_SEGEMENT_OFFSETS_DB}`
+        `    Deleting the corruped database at ${CONFLATION_MAPS_SEGEMENT_OFFSETS_DB}`
       );
       console.error();
       console.error(err);
-      rimrafSync(TARGET_MAPS_SEGEMENT_OFFSETS_DB);
+      rimrafSync(CONFLATION_MAPS_SEGEMENT_OFFSETS_DB);
       process.exit(1);
     }
   }
