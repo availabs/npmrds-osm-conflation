@@ -1,0 +1,25 @@
+#!/bin/bash
+
+set -e
+set -a
+
+cd "$( dirname "${BASH_SOURCE[0]}" )/" >/dev/null
+
+# https://wiki.openstreetmap.org/wiki/Osmosis/Detailed_Usage_0.41#--used-node_.28--un.29
+#   --used-node (--un)
+#     Restricts output of nodes to those that are used in ways and relations.
+#
+#   omitmetadata
+#       Omit non-geographic metadata on OSM entities.
+#       This includes version number and timestamp of the last edit to the entity
+#         as well as the user name and id of the last modifier.
+#       Omitting this metadata can save 15% of the file size when exporting to
+#         software that does not need this data.
+
+OSM_VERSION="$1"
+
+osmosis \
+  --read-pbf file="./data/planet-${OSM_VERSION}.osm.pbf" \
+  --bounding-polygon file=./data/new-york.poly completeWays=true \
+  --used-node \
+  --write-pbf omitmetadata=true file="./data/new-york-${OSM_VERSION}.osm.pbf"
