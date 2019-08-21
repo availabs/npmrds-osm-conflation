@@ -107,7 +107,7 @@ pipe(
 
     for (let i = 0; i < matches.length; ++i) {
       const {
-        properties: { shstReferenceId, pp_tmc: tmc },
+        properties: { shstReferenceId, pp_tmc: tmc, pp_f_system: fsystem },
         geometry: { coordinates }
       } = matches[i];
 
@@ -149,6 +149,7 @@ pipe(
         geomLength,
         target_map: 'NPMRDS',
         target_map_id: tmc,
+        fsystem,
         POFF: startDist,
         NOFF: geomLength - endDist,
         reversed: startDist > endDist

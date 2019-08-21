@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-/* eslint no-continue: 0, prefer-destructuring: 0 */
+/* eslint no-continue: 0, prefer-destructuring: 0, no-labels: 0, no-restricted-syntax: 0 */
 const { join } = require('path');
 const { pipe, through } = require('mississippi');
 const _ = require('lodash');
@@ -80,41 +80,170 @@ pipe(
 
     const shstGeometryLength = turf.length(referenceGeometry, KILOMETERS);
 
-    const processedList = [];
-    for (let i = 0; i < targetMapsSegmentOffsets.length; ++i) {
-      // targetMapsSegmentOffsets fields:
-      //   * shstReferenceId
-      //   * geomLength
-      //   * target_map
-      //   * target_map_id
-      //   * POFF
-      //   * NOFF
-      const tmso = targetMapsSegmentOffsets[i];
+    const cleanedSegmentOffsetsByTargetMap = targetMapsSegmentOffsets.reduce(
+      (acc, tmso) => {
+        const { target_map, target_map_id, POFF, NOFF, fsystem } = tmso;
 
-      const processedTMSO = _.pick(tmso, ['target_map', 'target_map_id']);
+        // Snap the target segment terminal vertices to the source map terminal vertices
+        //   if they are within SPLIT_BUFF distance of the source terminal vertices.
+        const startDist = POFF > SPLIT_BUFF ? _.round(POFF, PRECISION) : 0;
 
-      processedTMSO.startDist =
-        tmso.POFF > SPLIT_BUFF ? _.round(tmso.POFF, PRECISION) : 0;
+        const endDist =
+          NOFF > SPLIT_BUFF
+            ? _.round(shstGeometryLength - NOFF, PRECISION)
+            : shstGeometryLength;
 
-      processedTMSO.endDist =
-        tmso.NOFF > SPLIT_BUFF
-          ? _.round(shstGeometryLength - tmso.NOFF, PRECISION)
-          : shstGeometryLength;
+        if (
+          tmso.geomLength <= SPLIT_BUFF ||
+          endDist - startDist >= SPLIT_BUFF
+        ) {
+          acc[target_map] = acc[target_map] || [];
 
-      if (
-        tmso.geomLength <= SPLIT_BUFF ||
-        processedTMSO.endDist - processedTMSO.startDist >= SPLIT_BUFF
+          acc[target_map].push({
+            target_map,
+            target_map_id,
+            fsystem,
+            startDist,
+            endDist
+          });
+        }
+
+        return acc;
+      },
+      {}
+    );
+
+    // Remove overlapping target map segments
+    // WARNING: Object mutations
+    const nonOverlappingSegmentOffsets = Object.keys(
+      cleanedSegmentOffsetsByTargetMap
+    ).reduce((acc, target_map) => {
+      const networkRankedToAddOffsets = _.sortBy(
+        _.cloneDeep(cleanedSegmentOffsetsByTargetMap[target_map]),
+        ['fsytem', 'target_map_id']
+      );
+
+      const nonOverlapping = [networkRankedToAddOffsets[0]];
+
+      outerLoop: for (
+        let toAddIdx = 1;
+        toAddIdx < networkRankedToAddOffsets;
+        ++toAddIdx
       ) {
-        processedList.push(processedTMSO);
-      }
-    }
+        // Because networkRankedToAddOffsets is sorted by rank,
+        //   toAdd will never mutate a member of nonOverlapping.
+        //   However, nonOverlapping elements may mutate toAdd.
+        const toAdd = networkRankedToAddOffsets[toAddIdx];
 
-    if (!processedList.length) {
+        // Since we are pushing to the end of the nonOverlapping list from within
+        //   the following loop, we want to stop at the current last element.
+        //   All elements after the current last were added as a result of
+        //   the effects of toAdd on the currently existing nonOverlapping list members.
+        const endAt = networkRankedToAddOffsets.length;
+
+        for (
+          let alreadyAddedIdx = 0;
+          alreadyAddedIdx < endAt;
+          ++alreadyAddedIdx
+        ) {
+          const aleadyAdded = nonOverlapping[alreadyAddedIdx];
+
+          if (!aleadyAdded) {
+            continue;
+          }
+
+          if (
+            // toAdd      : o-----o
+            // aleadyAdded:    o-----o
+            toAdd.startDist <= aleadyAdded.startDist &&
+            toAdd.endDist >= aleadyAdded.startDist
+          ) {
+            toAdd.endDist = aleadyAdded.startDist;
+
+            if (toAdd.endDist - toAdd.startDist > SPLIT_BUFF) {
+              nonOverlapping.push(toAdd);
+            }
+          } else if (
+            // toAdd      :    o-----o
+            // aleadyAdded: o-----o
+            toAdd.startDist >= aleadyAdded.startDist &&
+            toAdd.startDist <= aleadyAdded.endDist
+          ) {
+            toAdd.startDist = aleadyAdded.endDist;
+
+            if (toAdd.endDist - toAdd.startDist > SPLIT_BUFF) {
+              nonOverlapping.push(toAdd);
+            }
+          } else if (
+            // toAdd      : o-------o
+            // aleadyAdded:   o---o
+            toAdd.startDist <= aleadyAdded.startDist &&
+            toAdd.endDist >= aleadyAdded.endDist
+          ) {
+            // split toAdd, removing the section that overlaps alreadyAdded
+
+            const omitBeginningSeg =
+              aleadyAdded.startDist - toAdd.startDist <= SPLIT_BUFF;
+
+            const omitEndingSeg =
+              toAdd.endDist - aleadyAdded.endDist <= SPLIT_BUFF;
+
+            if (omitBeginningSeg && omitEndingSeg) {
+              // After removing the section from toAdd that overlaps the higher ranked segment,
+              //   the remaining pieces of toAdd are too short to be included.
+              continue outerLoop;
+            } else if (omitBeginningSeg) {
+              // toAdd begins where alreadyAdded ends
+              toAdd.startDist = aleadyAdded.endDist;
+            } else if (omitEndingSeg) {
+              // toAdd ends where alreadyAdded begins
+              toAdd.endDist = aleadyAdded.startDist;
+            } else {
+              // make a clone of toAdd
+              const toAddClone = _.cloneDeep(toAdd);
+
+              // The first segment of toAdd ends where the higher ranked segment begins
+              //   We simply mutate toAdd. This trimmed segment continues along the inner loop.
+              toAdd.endDist = aleadyAdded.startDist;
+
+              // We need to insert the second segment of toAdd into networkRankedToAddOffsets.
+              toAddClone.startDist = aleadyAdded.endDist;
+
+              // Because the second segment of toAdd would have the same network rank
+              //   we need to insert it into the networkRankedToAddOffsets list
+              networkRankedToAddOffsets.splice(toAddIdx + 1, 0, toAddClone);
+            }
+          } else if (
+            // toAdd      :   o---o
+            // aleadyAdded: o-------o
+            toAdd.startDist >= aleadyAdded.startDist &&
+            toAdd.endDist <= aleadyAdded.endDist
+          ) {
+            // toAdd is completely covered by a higher ranked segment. Omit it.
+            continue;
+          } else {
+            // does not overlap any higer ranked segments. Add it unmutated.
+            nonOverlapping.push(toAdd);
+          }
+        }
+      }
+
+      // remove the nulled out segments
+      acc[target_map] = nonOverlapping.filter(s => s);
+
+      return acc;
+    }, {});
+
+    const processedOffsetsList = _.flatten(
+      _.values(nonOverlappingSegmentOffsets)
+    );
+
+    if (!processedOffsetsList.length) {
       return cb();
     }
 
     const splitterOffsets = _(
-      processedList.map(({ startDist, endDist }) => {
+      processedOffsetsList.map(({ startDist, endDist }) => {
         const offsets = [0];
         offsets.push(startDist);
         offsets.push(endDist);
@@ -159,13 +288,13 @@ pipe(
       _.last(segmentLineStrings).geometry.coordinates.length - 1
     ] = _.last(referenceGeometry.geometry.coordinates);
 
-    for (let i = 0; i < processedList.length; ++i) {
+    for (let i = 0; i < processedOffsetsList.length; ++i) {
       const {
         startDist: tmsStartDist,
         endDist: tmsEndDist,
         target_map,
         target_map_id
-      } = processedList[i];
+      } = processedOffsetsList[i];
 
       for (let j = 0; j < segmentLineStrings.length; ++j) {
         const segment = segmentLineStrings[j];
@@ -173,29 +302,22 @@ pipe(
           properties: { startDist, endDist }
         } = segment;
 
+        // If targetMapSeg overlaps sourceMapSeg, assign the targetMapId
+        //   to the segment's respective targetMap property.
         if (
+          // targetMapSeg begins before or at sourceMapSeg beginning
           tmsStartDist <= startDist &&
+          // targetMapSeg begins before sourceMapSeg ending
           tmsStartDist < endDist &&
+          // targetMapSeg ends after sourceMapSeg begins
           tmsEndDist > startDist
         ) {
-          segment.properties[target_map] = segment.properties[target_map] || [];
-          segment.properties[target_map].push(target_map_id);
-          segment.properties[target_map] = _.uniq(
-            segment.properties[target_map]
-          );
-
-          // if (segment.properties[target_map]) {
-          // console.error(
-          // 'INVARIANT BROKEN: More than one target_map segment per source map segment.'
-          // );
-          // console.error(`  referenceGeometry:  ${shstReferenceId}`);
-          // console.error(`  target_map:    ${target_map}`);
-          // console.error(
-          // `  target_map_ids: ${segment.properties[target_map]}, ${target_map_id}`
-          // );
-          // } else {
-          // segment.properties[target_map] = target_map_id;
-          // }
+          if (segment.properties[target_map]) {
+            throw new Error(
+              'ERROR: Invariant broken. More than one target_map segment per source map segment.'
+            );
+          }
+          segment.properties[target_map] = target_map_id;
         }
       }
     }
@@ -203,6 +325,7 @@ pipe(
     const batchPut = segmentLineStrings.map(segment => ({
       type: 'put',
       key: `${shstReferenceId}${
+        // If the source map segment was split, append the segmentIndex to the id.
         segment.properties.totalSegments > 1
           ? `.${segment.properties.segmentIndex}`
           : ''

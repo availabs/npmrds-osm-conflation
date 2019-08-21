@@ -105,7 +105,11 @@ pipe(
 
     for (let i = 0; i < matches.length; ++i) {
       const {
-        properties: { shstReferenceId, pp_ogc_fid: ogc_fid },
+        properties: {
+          shstReferenceId,
+          pp_ogc_fid: ogc_fid,
+          pp_Functional_Class: fsystem
+        },
         geometry: { coordinates }
       } = matches[i];
 
@@ -137,6 +141,7 @@ pipe(
         geomLength,
         target_map: 'RIS',
         target_map_id: ogc_fid,
+        fsystem,
         POFF: Math.min(startDist, endDist),
         NOFF: geomLength - Math.max(startDist, endDist),
         reversed: startDist > endDist
