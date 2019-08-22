@@ -38,18 +38,13 @@ const getConflationStats = () => {
     pipe(
       conflationPairingsDB.createValueStream(),
       through.obj(function writer(feature, $, cb) {
-        const tmcs = feature.properties.NPMRDS;
-        if (tmcs) {
-          for (let i = 0; i < tmcs.length; ++i) {
-            const tmc = tmcs[i];
-            conflationStats[tmc] = conflationStats[tmc] || {};
+        const tmc = feature.properties.NPMRDS;
 
-            conflationStats[tmc].length = conflationStats[tmc].length || 0;
-            conflationStats[tmc].length += turf.length(feature);
+        if (tmc) {
+          conflationStats[tmc] = conflationStats[tmc] || {};
 
-            conflationStats[tmc].oneOfMany =
-              conflationStats[tmc].oneOfMany || tmcs.length > 1;
-          }
+          conflationStats[tmc].length = conflationStats[tmc].length || 0;
+          conflationStats[tmc].length += turf.length(feature);
         }
 
         return cb();
@@ -90,7 +85,6 @@ const getConflationStats = () => {
         if (properties.isPrimary) {
           properties.targetLength = turf.length(feature);
           properties.sourceLength = _.get(conflationStats, [Tmc, 'length'], null);
-          properties.oneOfMany = _.get(conflationStats, [Tmc, 'oneOfMany'], null);
         }
 
         properties.len_diff_ratio = properties.isPrimary

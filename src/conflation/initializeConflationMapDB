@@ -37,6 +37,7 @@ pipe(
       },
       geometry
     } = feature;
+
     if (forwardReferenceId) {
       const properties = {
         geometryId,

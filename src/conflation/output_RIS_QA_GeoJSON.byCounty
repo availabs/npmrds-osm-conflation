@@ -35,18 +35,13 @@ const getConflationStats = () => {
     pipe(
       conflationPairingsDB.createValueStream(),
       through.obj(function writer(feature, $, cb) {
-        const ids = feature.properties.RIS;
-        if (ids) {
-          for (let i = 0; i < ids.length; ++i) {
-            const id = ids[i];
-            conflationStats[id] = conflationStats[id] || {};
+        const id = feature.properties.RIS;
 
-            conflationStats[id].length = conflationStats[id].length || 0;
-            conflationStats[id].length += turf.length(feature);
+        if (id) {
+          conflationStats[id] = conflationStats[id] || {};
 
-            conflationStats[id].manyRisSegs =
-              conflationStats[id].manyRisSegs || ids.length > 1;
-          }
+          conflationStats[id].length = conflationStats[id].length || 0;
+          conflationStats[id].length += turf.length(feature);
         }
 
         return cb();

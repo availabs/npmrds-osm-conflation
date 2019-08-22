@@ -118,4 +118,15 @@ data/leveldb/shstMatchedRis:
 		--leveldbDir ./data/leveldb/shstMatchedRis \
 		--clean
 
+# https://wiki.openstreetmap.org/wiki/Osmosis/Detailed_Usage_0.47#--used-node_.28--un.29
+#   Restricts output of nodes to those that are used in ways and relations.
+data/osm/new-york-181224.osm:
+	@osmosis --read-pbf file=data/osm/new-york-181224.osm.pbf --used-node --write-xml file=new-york-181224.osm
+
 load_sharedstreets_match_output: data/leveldb/shstMatchedNpmrds data/leveldb/shstMatchedRis
+
+load_osm_into_leveldb: data/osm/new-york-181224.osm
+	@./bin/data_loading_leveldb/loadOSM \
+		--osmFile ./data/osm/new-york-181224.osm \
+		--dbsParentDir ./data/leveldb/ \
+		--clean
