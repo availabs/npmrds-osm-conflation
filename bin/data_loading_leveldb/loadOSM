@@ -1,0 +1,140 @@
+#!/usr/bin/env node
+
+// https://wiki.openstreetmap.org/wiki/Way#Examples
+//   The nodes defining the geometry of the way are enumerated in the correct order,
+//     and indicated only by reference using their unique identifier.
+//   These nodes must have been already defined separately with their coordinates.
+//
+// https://wiki.openstreetmap.org/wiki/Relation:restriction
+
+const { createReadStream } = require('fs');
+const { join } = require('path');
+
+const yargs = require('yargs');
+const XmlStream = require('xml-stream');
+
+const levelup = require('levelup');
+const leveldown = require('leveldown');
+const encode = require('encoding-down');
+
+const { sync: rimrafSync } = require('rimraf');
+const { sync: mkdirpSync } = require('mkdirp');
+
+const cliArgsSpec = {
+  osmFile: {
+    demand: true,
+    type: 'string'
+  },
+  dbsParentDir: {
+    demand: true,
+    type: 'string'
+  },
+  clean: {
+    type: 'boolean',
+    description: 'Empty the leveldbDir before beginning.',
+    default: false
+  }
+};
+
+const { argv } = yargs
+  .strict()
+  .parserConfiguration({
+    'camel-case-expansion': false,
+    'flatten-duplicate-arrays': false
+  })
+  .wrap(yargs.terminalWidth() / 1.618)
+  .option(cliArgsSpec);
+
+const { osmFile, dbsParentDir, clean } = argv;
+
+const WAYS_DIR = join(dbsParentDir, 'osmWays');
+const NODES_DIR = join(dbsParentDir, 'osmNodes');
+const RELATIONS_DIR = join(dbsParentDir, 'osmRelations');
+
+if (clean) {
+  rimrafSync(WAYS_DIR);
+  rimrafSync(NODES_DIR);
+  rimrafSync(RELATIONS_DIR);
+}
+
+mkdirpSync(WAYS_DIR);
+mkdirpSync(NODES_DIR);
+mkdirpSync(RELATIONS_DIR);
+
+const waysDb = levelup(encode(leveldown(WAYS_DIR), { valueEncoding: 'json' }));
+const nodesDb = levelup(
+  encode(leveldown(NODES_DIR), { valueEncoding: 'json' })
+);
+const relationsDb = levelup(
+  encode(leveldown(RELATIONS_DIR), { valueEncoding: 'json' })
+);
+
+const osmStream = createReadStream(osmFile);
+
+const xml = new XmlStream(osmStream);
+
+xml.collect('node tag');
+xml.collect('relation member');
+xml.collect('relation tag');
+xml.collect('way nd');
+xml.collect('way tag');
+
+xml.on('endElement: relation', async d => {
+  const {
+    $: { id },
+    member,
+    tag
+  } = d;
+
+  const tags = Array.isArray(tag)
+    ? tag.reduce((acc, { $: { k, v } }) => {
+        acc[k] = v;
+        return acc;
+      }, {})
+    : null;
+
+  if (tags && tags.type === 'restriction') {
+    const members = member.map(({ $: { type, ref, role } }) => ({
+      type,
+      ref,
+      role
+    }));
+
+    await relationsDb.put(id, { id, members, tags });
+  }
+});
+
+xml.on('endElement: node', async d => {
+  const {
+    $: { id, lat, lon },
+    tag
+  } = d;
+
+  const tags = Array.isArray(tag)
+    ? tag.reduce((acc, { $: { k, v } }) => {
+        acc[k] = v;
+        return acc;
+      }, {})
+    : null;
+
+  await nodesDb.put(id, { id, lat, lon, tags });
+});
+
+xml.on('endElement: way', async d => {
+  const {
+    $: { id },
+    nd,
+    tag
+  } = d;
+
+  const nodes = Array.isArray(nd) ? nd.map(({ $: { ref } }) => ref) : null;
+
+  const tags = Array.isArray(tag)
+    ? tag.reduce((acc, { $: { k, v } }) => {
+        acc[k] = v;
+        return acc;
+      }, {})
+    : null;
+
+  await waysDb.put(id, { id, nodes, tags });
+});
