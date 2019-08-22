@@ -1,16 +1,18 @@
 #!/usr/bin/env node
 
-/* eslint no-continue: 0 */
+/* eslint no-continue: 0, no-underscore-dangle: 0 */
 
 const { join } = require('path');
 const { pipe, through } = require('mississippi');
 const { sync: rimrafSync } = require('rimraf');
+const _ = require('lodash');
 
 const levelup = require('levelup');
 const leveldown = require('leveldown');
 const encode = require('encoding-down');
 
 const SHST_GEOGRAPHY_DB = join(__dirname, '../../data/leveldb/shstGeometry/');
+const SHST_METADATA_DB = join(__dirname, '../../data/leveldb/shstMetadata/');
 
 const CONFLATION_MAP_DB = join(__dirname, '../../data/leveldb/conflationMap/');
 
@@ -18,6 +20,10 @@ rimrafSync(CONFLATION_MAP_DB);
 
 const shstGeometryDB = levelup(
   encode(leveldown(SHST_GEOGRAPHY_DB), { valueEncoding: 'json' })
+);
+
+const shstMetadataDB = levelup(
+  encode(leveldown(SHST_METADATA_DB), { valueEncoding: 'json' })
 );
 
 const conflationMapDB = levelup(
@@ -38,25 +44,57 @@ pipe(
       geometry
     } = feature;
 
+    let osmMetadata = null;
+
+    try {
+      ({ osmMetadata } = await shstMetadataDB.get(geometryId));
+    } catch (err) {
+      console.error(err);
+      console.warn('WARNING: No metadata found from shstGeometry', geometryId);
+    }
+
+    if (
+      osmMetadata &&
+      osmMetadata.oneWay &&
+      forwardReferenceId &&
+      backReferenceId
+    ) {
+      console.warn(
+        'WARNING: one-way OSM way with two sharedstreets references.'
+      );
+    }
+
     if (forwardReferenceId) {
       const properties = {
         geometryId,
         referenceId: forwardReferenceId,
         fromIntersectionId,
         toIntersectionId,
-        reversed: false
+        reversed: false,
+        osmMetadata
       };
 
       this.push(Object.assign({}, feature, { properties }));
     }
 
     if (backReferenceId) {
+      const reversedOsmMetadata = _.cloneDeep(osmMetadata);
+
+      if (reversedOsmMetadata) {
+        reversedOsmMetadata.waySections.reverse();
+        reversedOsmMetadata.waySections.forEach(waySection =>
+          waySection.nodeIds.reverse()
+        );
+        reversedOsmMetadata._reversed = true;
+      }
+
       const properties = {
         geometryId,
         referenceId: backReferenceId,
         fromIntersectionId: toIntersectionId,
         toIntersectionId: fromIntersectionId,
-        reversed: true
+        reversed: true,
+        osmMetadata: reversedOsmMetadata
       };
 
       const reversedCoords = geometry.coordinates.slice().reverse();

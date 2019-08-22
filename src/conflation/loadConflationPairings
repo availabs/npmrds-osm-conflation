@@ -357,10 +357,12 @@ pipe(
           ([distAlong]) => startDist === distAlong
         );
 
-        // If not, we need to record that we are inserting a new vertex.
-        //   (If it was included, we are using an existing vertex to split the geom)
+        // If not, we need to record that we are inserting a new vertex for the startNode.
+        //   Note: We only insert startNodes.
+        //         The terminal nodes of the shstRefGeom never require creation/insertion.
+        //         Additionaly, an internal segment's startNode is the preceding segment's endNode.
         if (startVertIdx === -1) {
-          segment.properties.insertedNode = turf.along(
+          segment.properties.insertedStartNode = turf.along(
             shstRefGeom,
             startDist,
             KILOMETERS
