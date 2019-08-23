@@ -49,42 +49,44 @@ const { osmFile, dbsParentDir, clean } = argv;
 
 const WAYS_DIR = join(dbsParentDir, 'osmWays');
 const NODES_DIR = join(dbsParentDir, 'osmNodes');
-const RELATIONS_DIR = join(dbsParentDir, 'osmRelations');
+const RESTRICTIONS_DIR = join(dbsParentDir, 'osmRestrictions');
 
 if (clean) {
   rimrafSync(WAYS_DIR);
   rimrafSync(NODES_DIR);
-  rimrafSync(RELATIONS_DIR);
+  rimrafSync(RESTRICTIONS_DIR);
 }
 
 mkdirpSync(WAYS_DIR);
 mkdirpSync(NODES_DIR);
-mkdirpSync(RELATIONS_DIR);
+mkdirpSync(RESTRICTIONS_DIR);
 
 const waysDb = levelup(encode(leveldown(WAYS_DIR), { valueEncoding: 'json' }));
 const nodesDb = levelup(
   encode(leveldown(NODES_DIR), { valueEncoding: 'json' })
 );
-const relationsDb = levelup(
-  encode(leveldown(RELATIONS_DIR), { valueEncoding: 'json' })
+const restrictionsDb = levelup(
+  encode(leveldown(RESTRICTIONS_DIR), { valueEncoding: 'json' })
 );
 
-const osmStream = createReadStream(osmFile);
-
-const xml = new XmlStream(osmStream);
-
-xml.collect('node tag');
-xml.collect('relation member');
-xml.collect('relation tag');
-xml.collect('way nd');
-xml.collect('way tag');
-
-xml.on('endElement: relation', async d => {
+const loadNode = async d => {
   const {
-    $: { id },
-    member,
+    $: { id, lat, lon },
     tag
   } = d;
+
+  const tags = Array.isArray(tag)
+    ? tag.reduce((acc, { $: { k, v } }) => {
+        acc[k] = v;
+        return acc;
+      }, {})
+    : null;
+
+  await nodesDb.put(id, { id, lat, lon, tags });
+};
+
+const loadRestriction = async d => {
+  const { member, tag } = d;
 
   const tags = Array.isArray(tag)
     ? tag.reduce((acc, { $: { k, v } }) => {
@@ -100,27 +102,23 @@ xml.on('endElement: relation', async d => {
       role
     }));
 
-    await relationsDb.put(id, { id, members, tags });
+    const { ref: nodeId } = members.find(({ role }) => role.match(/via/i));
+
+    let restrictions;
+
+    try {
+      restrictions = await restrictionsDb.get(nodeId);
+    } catch (err) {
+      restrictions = [];
+    }
+
+    restrictions.push(d);
+
+    await restrictionsDb.put(nodeId, restrictions);
   }
-});
+};
 
-xml.on('endElement: node', async d => {
-  const {
-    $: { id, lat, lon },
-    tag
-  } = d;
-
-  const tags = Array.isArray(tag)
-    ? tag.reduce((acc, { $: { k, v } }) => {
-        acc[k] = v;
-        return acc;
-      }, {})
-    : null;
-
-  await nodesDb.put(id, { id, lat, lon, tags });
-});
-
-xml.on('endElement: way', async d => {
+const loadWay = async d => {
   const {
     $: { id },
     nd,
@@ -137,4 +135,19 @@ xml.on('endElement: way', async d => {
     : null;
 
   await waysDb.put(id, { id, nodes, tags });
-});
+};
+
+const osmStream = createReadStream(osmFile);
+
+const xml = new XmlStream(osmStream);
+
+xml.collect('node tag');
+xml.on('endElement: node', loadNode);
+
+xml.collect('relation member');
+xml.collect('relation tag');
+xml.on('endElement: relation', loadRestriction);
+
+xml.collect('way nd');
+xml.collect('way tag');
+xml.on('endElement: way', loadWay);
