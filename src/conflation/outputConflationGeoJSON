@@ -4,34 +4,19 @@
 
 const { join } = require('path');
 const { pipe, through } = require('mississippi');
-const _ = require('lodash');
 
 const levelup = require('levelup');
 const leveldown = require('leveldown');
 const encode = require('encoding-down');
 
-const CONFLATION_MAP_DB = join(
-  __dirname,
-  '../../data/leveldb/',
-  'conflationMap/'
-);
+const dbsParentDir = join(__dirname, '../../data/leveldb/');
+const JSON_ENC = { valueEncoding: 'json' };
 
-const CONFLATION_PAIRINGS_DB = join(
-  __dirname,
-  '../../data/leveldb/',
-  'conflationPairingsDB'
-);
+const CONFLATION_FEATURES_DIR = join(dbsParentDir, 'conflationFeatures');
 
-const conflationMapDB = levelup(
-  encode(leveldown(CONFLATION_MAP_DB), { valueEncoding: 'json' })
+const conflationFeaturesDB = levelup(
+  encode(leveldown(CONFLATION_FEATURES_DIR), JSON_ENC)
 );
-
-const conflationPairingsDB = levelup(
-  encode(leveldown(CONFLATION_PAIRINGS_DB), {
-    valueEncoding: 'json'
-  })
-);
-
 const geoJSONOpen =
   '{"type":"FeatureCollection","name":"networkconflation","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[';
 
@@ -39,55 +24,16 @@ const geoJSONClose = ']}';
 
 let preDelim = '';
 
-const pairedReferenceGeoms = new Set();
-
-const outputPairedShStGeoms = () =>
+const outputFeatures = () =>
   new Promise((resolve, reject) =>
     pipe(
-      conflationPairingsDB.createReadStream(),
-      through.obj(async function writer(
-        { key: geomId, value: feature },
-        $,
-        cb
-      ) {
-        feature.properties.paired = true;
-        feature.properties.tmcs =
-          _.get(feature.properties, 'NPMRDS', []).join('|') || null;
-        feature.properties.ris_segs =
-          _.get(feature.properties, 'RIS', []).join('|') || null;
-        pairedReferenceGeoms.add(geomId.replace(/\..*/, ''));
-        process.stdout.write(`${preDelim}${JSON.stringify(feature)}`);
+      conflationFeaturesDB.createValueStream(),
+      through.obj(async function writer(feature, $, cb) {
+        this.push(`${preDelim}${JSON.stringify(feature)}`);
         preDelim = ',';
-
         return cb();
       }),
-      err => {
-        if (err) {
-          return reject(err);
-        }
-        return resolve();
-      }
-    )
-  );
-
-const outputUnpairedShStGeoms = () =>
-  new Promise((resolve, reject) =>
-    pipe(
-      conflationMapDB.createReadStream(),
-      through.obj(async function writer(
-        { key: geomId, value: feature },
-        $,
-        cb
-      ) {
-        if (!pairedReferenceGeoms.has(geomId)) {
-          pairedReferenceGeoms.add(geomId);
-          feature.properties.paired = false;
-          process.stdout.write(`${preDelim}${JSON.stringify(feature)}`);
-          preDelim = ',';
-        }
-
-        return cb();
-      }),
+      process.stdout,
       err => {
         if (err) {
           return reject(err);
@@ -100,9 +46,8 @@ const outputUnpairedShStGeoms = () =>
 (async () => {
   try {
     process.stdout.write(geoJSONOpen);
-    await outputPairedShStGeoms();
-    await outputUnpairedShStGeoms();
-    console.log(geoJSONClose);
+    await outputFeatures();
+    process.stdout.write(geoJSONClose);
   } catch (err) {
     console.error(err);
     process.exit(1);

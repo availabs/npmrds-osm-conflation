@@ -99,17 +99,19 @@ const loadRestriction = async d => {
     : null;
 
   if (tags && tags.type === 'restriction') {
-    const members = member.map(({ $: { type, ref, role } }) => ({
-      type,
-      ref,
-      role
-    }));
+    const members = member.reduce((acc, { $: { ref = null, role = null } }) => {
+      if (ref !== null && role !== null) {
+        acc[role] = ref;
+      }
 
-    let { ref: nodeId = null } =
-      members.find(({ role }) => role.match(/via/i)) || {};
+      return acc;
+    }, {});
+
+    let nodeId = members.via || null;
 
     // All restrictions without a nodeId will be keyed by -1.
     assert(nodeId !== -1); // INVARIANT: no existing OSM nodes have -1 as ID.
+
     if (nodeId === null) {
       nodeId = -1;
     }
@@ -122,7 +124,7 @@ const loadRestriction = async d => {
       restrictions = [];
     }
 
-    restrictions.push(d);
+    restrictions.push({ members, restriction: tags.restriction });
 
     await osmRestrictionsDB.put(nodeId, restrictions);
   }
