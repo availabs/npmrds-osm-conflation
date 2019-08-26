@@ -1,0 +1,90 @@
+#!/bin/bash
+
+set -e
+
+if [ "$#" -ne 1 ]; then
+  (>&2 echo 'USAGE: You must provide the path to the output shapefile dir as the 1st and only CLI argument.')
+  exit 1
+fi
+
+mkdir -p "$1"
+
+OUTSHP="$( realpath "$1" )"
+
+cd "$( dirname "${BASH_SOURCE[0]}" )"
+
+# the temp directory used, within $DIR
+# omit the -p parameter to create a temporal directory in the default location
+WORK_DIR="$( mktemp -d )"
+
+# check if tmp dir was created
+if [[ ! "$WORK_DIR" || ! -d "$WORK_DIR" ]]; then
+  echo "Could not create temp dir"
+  exit 1
+fi
+
+# deletes the temp directory
+function cleanup {      
+  rm -rf "$WORK_DIR"
+  echo "Deleted temp working directory $WORK_DIR"
+}
+
+# register the cleanup function to be called on the EXIT signal
+trap cleanup EXIT
+
+echo "$WORK_DIR"
+
+a=0
+
+GEOJSON_OPEN='{"type":"FeatureCollection","name":"networkconflation","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[';
+
+GEOJSON_CLOSE=']}';
+
+N=100000
+prev_n=0
+
+COL_RENAMING='
+  s/totalSegments/total_segs/g
+  s/segmentIndex/seg_index/g
+  s/networklevel/networklev/g
+'
+
+  while IFS='' read -r line
+  do
+    n="$((a++/"$N"))"
+    if [[ "$n" != "$prev_n" ]]; then
+      printf '%s' "$GEOJSON_CLOSE" >> "$filename"
+      ct=0
+    fi
+
+    prev_n="$n"
+    printf -v filename "%s/conflation.%04d.geojson" "$WORK_DIR" "$n"
+
+    if [[ "$ct" -eq '0' ]]; then
+      printf '%s' "$GEOJSON_OPEN" > "$filename"
+    else
+      printf ',' >> "$filename"
+    fi
+
+    printf '%s' "$line" >> "$filename"
+
+    ((ct+=1))
+  done < <(
+    ../../src/conflation/outputConflationNDJSON |
+      sed "$COL_RENAMING" 
+  )
+
+printf '%s' "$GEOJSON_CLOSE" >> "$filename"
+
+find "$WORK_DIR" -type f -name '*.geojson' |
+  sort |
+  while read -r f; do
+    sed -i "$COL_RENAMING" "$f"
+
+    if ! [ -f "$RIS_QA_SHP" ]; then
+      ogr2ogr -f 'ESRI Shapefile' "$OUTSHP" "$f" -nln network_conflation
+    else
+      ogr2ogr -f 'ESRI Shapefile' -update -append "$OUTSHP" "$f" -nln network_conflation
+    fi
+  done
+
