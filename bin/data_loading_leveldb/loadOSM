@@ -9,6 +9,7 @@
 
 const { createReadStream } = require('fs');
 const { join } = require('path');
+const assert = require('assert');
 
 const yargs = require('yargs');
 const XmlStream = require('xml-stream');
@@ -47,26 +48,28 @@ const { argv } = yargs
 
 const { osmFile, dbsParentDir, clean } = argv;
 
-const WAYS_DIR = join(dbsParentDir, 'osmWays');
-const NODES_DIR = join(dbsParentDir, 'osmNodes');
-const RESTRICTIONS_DIR = join(dbsParentDir, 'osmRestrictions');
+const OSM_WAYS_DIR = join(dbsParentDir, 'osmWays');
+const OSM_NODES_DIR = join(dbsParentDir, 'osmNodes');
+const OSM_RESTRICTIONS_DIR = join(dbsParentDir, 'osmRestrictions');
 
 if (clean) {
-  rimrafSync(WAYS_DIR);
-  rimrafSync(NODES_DIR);
-  rimrafSync(RESTRICTIONS_DIR);
+  rimrafSync(OSM_WAYS_DIR);
+  rimrafSync(OSM_NODES_DIR);
+  rimrafSync(OSM_RESTRICTIONS_DIR);
 }
 
-mkdirpSync(WAYS_DIR);
-mkdirpSync(NODES_DIR);
-mkdirpSync(RESTRICTIONS_DIR);
+mkdirpSync(OSM_WAYS_DIR);
+mkdirpSync(OSM_NODES_DIR);
+mkdirpSync(OSM_RESTRICTIONS_DIR);
 
-const waysDb = levelup(encode(leveldown(WAYS_DIR), { valueEncoding: 'json' }));
-const nodesDb = levelup(
-  encode(leveldown(NODES_DIR), { valueEncoding: 'json' })
+const osmWaysDB = levelup(
+  encode(leveldown(OSM_WAYS_DIR), { valueEncoding: 'json' })
 );
-const restrictionsDb = levelup(
-  encode(leveldown(RESTRICTIONS_DIR), { valueEncoding: 'json' })
+const osmNodesDB = levelup(
+  encode(leveldown(OSM_NODES_DIR), { valueEncoding: 'json' })
+);
+const osmRestrictionsDB = levelup(
+  encode(leveldown(OSM_RESTRICTIONS_DIR), { valueEncoding: 'json' })
 );
 
 const loadNode = async d => {
@@ -82,7 +85,7 @@ const loadNode = async d => {
       }, {})
     : null;
 
-  await nodesDb.put(id, { id, lat, lon, tags });
+  await osmNodesDB.put(id, { id, lat: +lat, lon: +lon, tags });
 };
 
 const loadRestriction = async d => {
@@ -102,19 +105,26 @@ const loadRestriction = async d => {
       role
     }));
 
-    const { ref: nodeId } = members.find(({ role }) => role.match(/via/i));
+    let { ref: nodeId = null } =
+      members.find(({ role }) => role.match(/via/i)) || {};
+
+    // All restrictions without a nodeId will be keyed by -1.
+    assert(nodeId !== -1); // INVARIANT: no existing OSM nodes have -1 as ID.
+    if (nodeId === null) {
+      nodeId = -1;
+    }
 
     let restrictions;
 
     try {
-      restrictions = await restrictionsDb.get(nodeId);
+      restrictions = await osmRestrictionsDB.get(nodeId);
     } catch (err) {
       restrictions = [];
     }
 
     restrictions.push(d);
 
-    await restrictionsDb.put(nodeId, restrictions);
+    await osmRestrictionsDB.put(nodeId, restrictions);
   }
 };
 
@@ -134,7 +144,7 @@ const loadWay = async d => {
       }, {})
     : null;
 
-  await waysDb.put(id, { id, nodes, tags });
+  await osmWaysDB.put(id, { id, nodes, tags });
 };
 
 const osmStream = createReadStream(osmFile);

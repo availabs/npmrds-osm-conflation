@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 
-/* eslint no-continue: 0, no-underscore-dangle: 0 */
+/* eslint no-continue: 0, no-param-reassign: 0, no-underscore-dangle: 0 */
 
+const { readFileSync } = require('fs');
 const { join } = require('path');
 const { pipe, through } = require('mississippi');
 const { sync: rimrafSync } = require('rimraf');
 const _ = require('lodash');
+const turf = require('@turf/turf');
 
 const levelup = require('levelup');
 const leveldown = require('leveldown');
@@ -30,9 +32,38 @@ const conflationMapDB = levelup(
   encode(leveldown(CONFLATION_MAP_DB), { valueEncoding: 'json' })
 );
 
+const nysBoundingPolygon = JSON.parse(
+  readFileSync(join(__dirname, '../../data/tiger/nys.bounding.geojson'))
+);
+
+// https://github.com/sharedstreets/sharedstreets-types/blob/3c1d5822ff4943ae063f920e018dd3e349213c8c/index.ts#L33-L44
+const shstOsmWayRoadClass = {
+  Motorway: 0,
+  Trunk: 1,
+  Primary: 2,
+  Secondary: 3,
+  Tertiary: 4,
+  Residential: 5,
+  Unclassified: 6,
+  Service: 7,
+  Other: 8
+};
+
 pipe(
   shstGeometryDB.createValueStream(),
   through.obj(async function splitter(feature, $, cb) {
+    // Because the SharedStreets tiles include all roads near the NYS Border, including other states' roads.
+    const withinNYS =
+      nysBoundingPolygon.geometry.type === 'MultiPolygon'
+        ? nysBoundingPolygon.geometry.coordinates.some(coordinates =>
+            turf.booleanWithin(feature, { type: 'Polygon', coordinates })
+          )
+        : turf.booleanWithin(feature, nysBoundingPolygon);
+
+    const nysRoad =
+      withinNYS ||
+      !!turf.lineIntersect(feature, nysBoundingPolygon).features.length;
+
     const {
       properties: {
         id: geometryId,
@@ -53,6 +84,18 @@ pipe(
       console.warn('WARNING: No metadata found from shstGeometry', geometryId);
     }
 
+    if (osmMetadata && Array.isArray(osmMetadata.waySections)) {
+      const { waySections } = osmMetadata;
+
+      for (let i = 0; i < waySections.length; ++i) {
+        const waySection = waySections[i];
+        const { roadClass } = waySection;
+        waySection.fsystem = Number.isFinite(shstOsmWayRoadClass[roadClass])
+          ? shstOsmWayRoadClass[roadClass]
+          : shstOsmWayRoadClass.Other;
+      }
+    }
+
     if (
       osmMetadata &&
       osmMetadata.oneWay &&
@@ -71,6 +114,7 @@ pipe(
         fromIntersectionId,
         toIntersectionId,
         reversed: false,
+        state: nysRoad ? 'ny' : null,
         osmMetadata
       };
 
@@ -94,6 +138,7 @@ pipe(
         fromIntersectionId: toIntersectionId,
         toIntersectionId: fromIntersectionId,
         reversed: true,
+        state: nysRoad ? 'ny' : null,
         osmMetadata: reversedOsmMetadata
       };
 
