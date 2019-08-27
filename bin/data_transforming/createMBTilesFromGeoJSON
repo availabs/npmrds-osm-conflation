@@ -1,0 +1,61 @@
+#!/bin/bash
+
+set -e
+
+if [ "$#" -ne 2 ]; then
+  (>&2 echo 'USAGE: You must provide two positional CLI argument:')
+  (>&2 echo '         1st: the path to the GeoJSON file')
+  (>&2 echo '         2nd: the output file path')
+  exit 1
+fi
+
+if [ ! -f "$1" ]; then
+  (>&2 echo "ERROR: No file found at at $1")
+  exit 1
+fi
+
+INF="$( realpath "$1" )"
+OUTF="$( realpath "$2" )"
+
+
+FILTER='
+  {
+    "*": [
+      "all",
+      [ "any",
+        [ "<=", "networklevel", 0 ],
+        [ ">=", "$zoom", 16 ],
+        [ "all",
+          [ ">=", "$zoom", 3 ],
+          [ "<=", "networklevel", 1 ]
+        ],
+        [ "all",
+          [ ">=", "$zoom", 10 ],
+          [ "<=", "networklevel", 2 ]
+        ],
+        [ "all",
+          [ ">=", "$zoom", 12 ],
+          [ "<=", "networklevel", 3 ]
+        ],
+        [ "all",
+          [ ">=", "$zoom", 14 ],
+          [ "<=", "networklevel", 4 ]
+        ],
+        [ "all",
+          [ ">=", "$zoom", 15 ],
+          [ "<=", "networklevel", 5 ]
+        ]
+      ]
+    ]
+  }
+'
+
+tippecanoe \
+  --layer=network_conflation \
+  --generate-ids \
+  --read-parallel \
+  -z16 \
+  -j "$FILTER" \
+  --force -o "$OUTF" \
+  "$INF"
+

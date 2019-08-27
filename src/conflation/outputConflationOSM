@@ -1,0 +1,184 @@
+#!/usr/bin/env node
+
+/* eslint no-param-reassign: 0 */
+
+const { join } = require('path');
+const { pipe, through } = require('mississippi');
+
+const levelup = require('levelup');
+const leveldown = require('leveldown');
+const encode = require('encoding-down');
+
+const dbsParentDir = join(__dirname, '../../data/leveldb/');
+const JSON_ENC = { valueEncoding: 'json' };
+
+const CONFLATION_NODES_DIR = join(dbsParentDir, 'conflationNodes');
+const CONFLATION_RESTRICTIONS_DIR = join(
+  dbsParentDir,
+  'conflationRestrictions'
+);
+const CONFLATION_WAYS_DIR = join(dbsParentDir, 'conflationWays');
+
+const conflationNodesDB = levelup(
+  encode(leveldown(CONFLATION_NODES_DIR), JSON_ENC)
+);
+const conflationRestrictionsDB = levelup(
+  encode(leveldown(CONFLATION_RESTRICTIONS_DIR), JSON_ENC)
+);
+const conflationWaysDB = levelup(
+  encode(leveldown(CONFLATION_WAYS_DIR), JSON_ENC)
+);
+
+const outputNodes = () =>
+  new Promise((resolve, reject) =>
+    pipe(
+      conflationNodesDB.createValueStream(),
+      through.obj(async function writer({ id, lon, lat }, $, cb) {
+        process.stdout.write(
+          `
+  <node id="${id}" version="-1" timestamp="1969-12-31T23:59:59Z" changeset="-1" lat="${lat}" lon="${lon}"/>`
+        );
+        return cb();
+      }),
+      err => {
+        if (err) {
+          return reject(err);
+        }
+        return resolve();
+      }
+    )
+  );
+
+// <relation id="19030" version="-1" timestamp="1969-12-31T23:59:59Z" changeset="-1">
+//   <member type="node" ref="41360293" role="via"/>
+//   <member type="way" ref="5575552" role="to"/>
+//   <member type="way" ref="116240518" role="from"/>
+//   <tag k="type" v="restriction"/>
+//   <tag k="restriction" v="no_left_turn"/>
+// </relation>
+// await conflationRestrictionsDB.put(++restrictionIdSeq, {
+//   from: fromId,
+//   via: +osmNodeId,
+//   to: toId,
+//   restriction
+// })
+const outputRestrictions = () =>
+  new Promise((resolve, reject) =>
+    pipe(
+      conflationRestrictionsDB.createReadStream(),
+      through.obj(async function writer(
+        {key: id, value: { via, to, from, restriction } },
+        $,
+        cb
+      ) {
+        process.stdout.write(`
+  <relation id="${id}" version="-1" timestamp="1969-12-31T23:59:59Z" changeset="-1">
+    <member type="node" ref="${via}" role="via"/>
+    <member type="way" ref="${to}" role="to"/>
+    <member type="way" ref="${from}" role="from"/>
+    <tag k="type" v="restriction"/>
+    <tag k="restriction" v="${restriction}"/>
+  </relation>`);
+        return cb();
+      }),
+      err => {
+        if (err) {
+          return reject(err);
+        }
+        return resolve();
+      }
+    )
+  );
+
+//  <way id="5563796" version="-1" timestamp="1969-12-31T23:59:59Z" changeset="-1">
+//    <nd ref="41247989"/>
+//    <nd ref="6068572286"/>
+//    <nd ref="3397331742"/>
+//    <nd ref="41247991"/>
+//    <nd ref="41247994"/>
+//    <nd ref="41247996"/>
+//    <tag k="highway" v="residential"/>
+//    <tag k="maxspeed" v="30 mph"/>
+//    <tag k="name" v="Homestead Avenue"/>
+//    <tag k="tiger:cfcc" v="A41"/>
+//    <tag k="tiger:county" v="Albany, NY"/>
+//    <tag k="tiger:name_base" v="Homestead"/>
+//    <tag k="tiger:name_type" v="Ave"/>
+//    <tag k="tiger:zip_left" v="12203"/>
+//    <tag k="tiger:zip_right" v="12203"/>
+//  </way>
+//
+//  const conflationWay = {
+//    id,
+//    nodes: nodeIds,
+//    tags: Object.assign(
+//      {},
+//      { OSM, NPMRDS, RIS },
+//      osmWay && osmWay.tags,
+//      _.mapKeys(
+//        _.omit(feature.properties, [
+//          'osmMetadata',
+//          'fsystem',
+//          'OSM',
+//          'RIS',
+//          'NPMRDS'
+//        ]),
+//        (v, k) => `sharedstreets:${k}`
+//      ),
+//      { oneWay: 'yes' }
+//    ),
+//  };
+
+const outputWays = () =>
+  new Promise((resolve, reject) =>
+    pipe(
+      conflationWaysDB.createValueStream(),
+      through.obj(async function writer({ id, nodes, tags }, $, cb) {
+        process.stdout.write(`
+  <way id="${id}" version="-1" timestamp="1969-12-31T23:59:59Z" changeset="-1">`);
+
+        for (let i = 0; i < nodes.length; ++i) {
+          process.stdout.write(`
+    <nd ref="${nodes[i]}"/>`);
+        }
+
+        Object.keys(tags).forEach(k => {
+          let v = tags[k]
+          if (typeof v === 'string') {
+            v = v.replace(/<|>|&|"/g, '')
+          }
+          process.stdout.write(`
+    <tag k="${k}" v="${v}"/>`)
+        });
+
+        process.stdout.write(`
+  </way>`);
+
+        return cb();
+      }),
+      err => {
+        if (err) {
+          return reject(err);
+        }
+        return resolve();
+      }
+    )
+  );
+
+(async () => {
+  try {
+    process.stdout.write(`<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6" generator="AVAIL Network Conflation Tool">
+  <bounds minlon="-74.26890" minlat="42.41979" maxlon="-73.67937" maxlat="42.82377" origin="http://www.openstreetmap.org/api/0.6"/>`);
+
+    await outputNodes();
+    await outputRestrictions();
+    await outputWays();
+
+    process.stdout.write(`
+</osm>`);
+  } catch (err) {
+    console.error(err);
+    process.exit(1);
+  }
+})();

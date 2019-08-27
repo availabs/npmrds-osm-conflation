@@ -246,7 +246,7 @@ const loadWays = () => {
 
         const conflationWay = {
           id,
-
+          nodes: nodeIds,
           tags: Object.assign(
             {},
             { OSM, NPMRDS, RIS },
@@ -262,8 +262,7 @@ const loadWays = () => {
               (v, k) => `sharedstreets:${k}`
             ),
             { oneWay: 'yes' }
-          ),
-          nodes: nodeIds
+          )
         };
 
         const conflationFeature = _.cloneDeep(feature);
