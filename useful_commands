@@ -3,3 +3,4 @@ jq '.features|map(.properties.metadata.osmMetadata.waySections|map(.wayId))|flat
 
 # Stream geojson features
 sed 's/^.*features":\[//g; s/^/\[/g; s/}$//g' conflation.albany-npmrds.2.geojson | jq -cn --stream 'fromstream(1|truncate_stream(inputs))'
+osmosis --read-xml file=conflation.osm --sort type="TypeThenId" --write-pbf omitmetadata=true conflation.osm.pbf
