@@ -110,7 +110,7 @@ pipe(
     if (forwardReferenceId) {
       const properties = {
         geometryId,
-        referenceId: forwardReferenceId,
+        shstReferenceId: forwardReferenceId,
         fromIntersectionId,
         toIntersectionId,
         reversed: false,
@@ -134,7 +134,7 @@ pipe(
 
       const properties = {
         geometryId,
-        referenceId: backReferenceId,
+        shstReferenceId: backReferenceId,
         fromIntersectionId: toIntersectionId,
         toIntersectionId: fromIntersectionId,
         reversed: true,
@@ -157,7 +157,7 @@ pipe(
     try {
       const {
         properties: {
-          referenceId,
+          shstReferenceId,
           fromIntersectionId,
           toIntersectionId,
           reversed
@@ -165,13 +165,13 @@ pipe(
         geometry: { coordinates }
       } = feature;
 
-      let preferedFeature = feature;
+      let preferredFeature = feature;
 
       try {
-        const other = await conflationMapDB.get(referenceId);
+        const other = await conflationMapDB.get(shstReferenceId);
         // Prefer original geometries to ones we created by reversing
         if (reversed !== other.properties.reversed) {
-          preferedFeature = reversed ? other : feature;
+          preferredFeature = reversed ? other : feature;
         } else if (
           // The terminal intersections are the same
           other.properties.fromIntersectionId === fromIntersectionId &&
@@ -179,7 +179,7 @@ pipe(
         ) {
           // choose the geometry with the higher resolution
           if (coordinates.length < other.geometry.coordinates.length) {
-            preferedFeature = other;
+            preferredFeature = other;
           }
         } else {
           // Cannot pick, so throw
@@ -194,7 +194,7 @@ pipe(
         }
       }
 
-      await conflationMapDB.put(referenceId, preferedFeature);
+      await conflationMapDB.put(shstReferenceId, preferredFeature);
 
       return cb();
     } catch (err) {

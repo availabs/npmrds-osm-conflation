@@ -58,14 +58,9 @@ const conflationPairingsDB = levelup(
 );
 
 pipe(
-  conflationMapsSegmentsOffsetsDB.createReadStream(),
-  through.obj(async function loader(
-    { key: shstReferenceId, value: targetMapsSegmentOffsets },
-    $,
-    cb
-  ) {
+  conflationMapDB.createKeyStream(),
+  through.obj(async function loader(shstReferenceId, $, cb) {
     let shstRefGeom;
-
     try {
       shstRefGeom = await conflationMapDB.get(shstReferenceId);
     } catch (err) {
@@ -76,6 +71,15 @@ pipe(
         return cb();
       }
       throw new Error(err);
+    }
+
+    let targetMapsSegmentOffsets;
+    try {
+      targetMapsSegmentOffsets = await conflationMapsSegmentsOffsetsDB.get(
+        shstReferenceId
+      );
+    } catch (err) {
+      targetMapsSegmentOffsets = [];
     }
 
     const shstRefGeomLength = turf.length(shstRefGeom, KILOMETERS);
@@ -118,8 +122,7 @@ pipe(
     //   because two nodes share the same coords. Punting for now.
     if (osmNodeIdsSeq.length !== shstRefGeomVerticesSeq.length) {
       console.error(
-        'INVARIANT BROKEN: osmNodeIdsSeq.length !== shstRefGeomVerticesSeq.length:',
-        shstReferenceId
+        `INVARIANT BROKEN: osmNodeIdsSeq.length (${osmNodeIdsSeq.length}) !== shstRefGeomVerticesSeq.length: (${shstRefGeomVerticesSeq.length}): for shstRef ${shstReferenceId}`
       );
       return cb();
       // console.error(osmNodeIdsSeq.length, '<>:', shstRefGeomVerticesSeq.length)
@@ -291,7 +294,7 @@ pipe(
             console.error(
               JSON.stringify({ nodeIds, shstRefGeomVerticesSeq }, null, 4)
             );
-            throw new Error('Could not find osmWaySections startVertex');
+            throw new Error('Could not find osmWaySections endVertex');
           }
 
           const {

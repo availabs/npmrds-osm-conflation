@@ -50,7 +50,7 @@ const conflationMapsSegmentsOffsetsDB = levelup(
 pipe(
   shstMatchedRISSegmentsDB.createValueStream(),
   through.obj(async function loader(matches, $, cb) {
-    const refIds = [
+    const shstReferenceIds = [
       ...matches.reduce((acc, { properties: { shstReferenceId } }) => {
         if (shstReferenceId) {
           acc.add(shstReferenceId);
@@ -60,7 +60,7 @@ pipe(
     ];
 
     const conflationMapFeatures = (await Promise.all(
-      refIds.map(async id => {
+      shstReferenceIds.map(async id => {
         try {
           const feature = await conflationMapDB.get(id);
           return { id, feature };
@@ -82,7 +82,7 @@ pipe(
     }, {});
 
     const conflationMapsSegmentOffsetsLists = (await Promise.all(
-      refIds.map(async id => {
+      shstReferenceIds.map(async id => {
         let list;
 
         try {
@@ -150,7 +150,7 @@ pipe(
       offsetList.push(segmentOffsets);
     }
 
-    const batchPut = refIds.map(id => ({
+    const batchPut = shstReferenceIds.map(id => ({
       type: 'put',
       key: id,
       value: _.uniqWith(conflationMapsSegmentOffsetsLists[id], _.isEqual)
