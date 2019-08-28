@@ -24,7 +24,7 @@ FILTER='
       "all",
       [ "any",
         [ "<=", "networklevel", 0 ],
-        [ ">=", "$zoom", 16 ],
+        [ ">=", "$zoom", 13 ],
         [ "all",
           [ ">=", "$zoom", 3 ],
           [ "<=", "networklevel", 1 ]
@@ -38,11 +38,7 @@ FILTER='
           [ "<=", "networklevel", 3 ]
         ],
         [ "all",
-          [ ">=", "$zoom", 14 ],
-          [ "<=", "networklevel", 4 ]
-        ],
-        [ "all",
-          [ ">=", "$zoom", 15 ],
+          [ ">=", "$zoom", 13 ],
           [ "<=", "networklevel", 5 ]
         ]
       ]
@@ -54,7 +50,7 @@ tippecanoe \
   --layer=network_conflation \
   --generate-ids \
   --read-parallel \
-  -z16 \
+  --minimum-detail 8 --extend-zooms-if-still-dropping \
   -j "$FILTER" \
   --force -o "$OUTF" \
   "$INF"

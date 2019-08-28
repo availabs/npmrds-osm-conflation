@@ -39,6 +39,7 @@
     "sharedstreets": "^0.12.4",
     "sharedstreets-conflator": "^0.2.1",
     "sharedstreets-pbf": "^0.8.0",
+    "simple-statistics": "^7.0.5",
     "split": "^1.0.1",
     "split2": "^3.1.1",
     "stream-throttle": "^0.1.3",

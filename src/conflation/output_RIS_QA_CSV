@@ -61,7 +61,7 @@ const getConflationStats = () => {
     const shapefiles = readdirSync(shapefilesDir);
 
     process.stdout.write(
-      'ogc_fid,is_paired,metadata_length,shp_length,conflation_length,oneway_metadata_len_diff_ratio,oneway_shp_len_diff_ratio,twoway_metadata_len_diff_ratio,twoway_shp_len_diff_ratio\n'
+      'ogc_fid,county,is_paired,shp_length,conflation_length,oneway_len_diff_ratio,twoway_len_diff_ratio\n'
     );
 
     for (let i = 0; i < shapefiles.length; ++i) {
@@ -74,34 +74,25 @@ const getConflationStats = () => {
       for (let j = 0; j < tmcShapeFile.features.length; ++j) {
         const feature = tmcShapeFile.features[j];
         const {
-          properties: { ogc_fid, Section_Length: miles }
+          properties: { ogc_fid, County_Name: county }
         } = feature;
 
         const is_paired = conflationStats[ogc_fid] !== undefined;
-        const metadata_length = _.round(miles, 5);
         const shp_length = _.round(turf.length(feature, MILES), 5);
         const conflation_length = conflationStats[ogc_fid]
           ? _.round(conflationStats[ogc_fid].length, 5)
           : 0;
 
-        const oneway_metadata_len_diff_ratio = is_paired
-          ? _.round((metadata_length - conflation_length) / shp_length, 5)
-          : '';
-
-        const oneway_shp_len_diff_ratio = is_paired
+        const oneway_len_diff_ratio = is_paired
           ? _.round((shp_length - conflation_length) / shp_length, 5)
           : '';
 
-        const twoway_metadata_len_diff_ratio = is_paired
-          ? _.round((metadata_length - conflation_length / 2) / shp_length, 5)
-          : '';
-
-        const twoway_shp_len_diff_ratio = is_paired
+        const twoway_len_diff_ratio = is_paired
           ? _.round((shp_length - conflation_length / 2) / shp_length, 5)
           : '';
 
         process.stdout.write(
-          `${ogc_fid},${is_paired},${metadata_length},${shp_length},${conflation_length},${oneway_metadata_len_diff_ratio},${oneway_shp_len_diff_ratio},${twoway_metadata_len_diff_ratio},${twoway_shp_len_diff_ratio}\n`
+          `${ogc_fid},${county},${is_paired},${shp_length},${conflation_length},${oneway_len_diff_ratio},${twoway_len_diff_ratio}\n`
         );
       }
     }

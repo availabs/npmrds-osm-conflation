@@ -64,7 +64,7 @@ const getConflationStats = () => {
     const shapefiles = readdirSync(shapefilesDir);
 
     process.stdout.write(
-      'tmc,is_primary,is_paired,metadata_length,shp_length,conflation_length,metadata_len_diff_ratio,shp_len_diff_ratio\n'
+      'tmc,county,is_primary,is_paired,shp_length,conflation_length,len_diff_ratio\n'
     );
 
     for (let i = 0; i < shapefiles.length; ++i) {
@@ -79,26 +79,21 @@ const getConflationStats = () => {
       for (let j = 0; j < tmcShapeFile.features.length; ++j) {
         const feature = tmcShapeFile.features[j];
         const {
-          properties: { tmc, miles }
+          properties: { tmc, county }
         } = feature;
 
         const is_primary = tmcIsPrimary[tmc] !== 0;
         const is_paired = conflationStats[tmc] !== undefined;
-        const metadata_length = _.round(miles, 5);
         const shp_length = _.round(turf.length(feature, MILES), 5);
         const conflation_length = conflationStats[tmc]
           ? _.round(conflationStats[tmc].length, 5)
           : 0;
-        const metadata_len_diff_ratio = is_paired
-          ? _.round((metadata_length - conflation_length) / shp_length, 5)
-          : '';
-
-        const shp_len_diff_ratio = is_paired
+        const len_diff_ratio = is_paired
           ? _.round((shp_length - conflation_length) / shp_length, 5)
           : '';
 
         process.stdout.write(
-          `${tmc},${is_primary},${is_paired},${metadata_length},${shp_length},${conflation_length},${metadata_len_diff_ratio},${shp_len_diff_ratio}\n`
+          `${tmc},${county},${is_primary},${is_paired},${shp_length},${conflation_length},${len_diff_ratio}\n`
         );
       }
     }
