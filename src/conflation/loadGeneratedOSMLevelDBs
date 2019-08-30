@@ -278,6 +278,10 @@ const loadWays = () => {
           networklevel: feature.properties.osmMetadata.fsystem
         };
 
+        if (feature.properties.osmMetadata.oneWay) {
+          conflationFeature.properties.networklevel += 0.5
+        }
+
         await Promise.all([
           conflationWaysDB.put(id, conflationWay),
           conflationFeaturesDB.put(id, conflationFeature),

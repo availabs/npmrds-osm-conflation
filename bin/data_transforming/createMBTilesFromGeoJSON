@@ -23,7 +23,7 @@ FILTER='
     "*": [
       "all",
       [ "any",
-        [ "<=", "networklevel", 0 ],
+        [ "<", "networklevel", 1 ],
         [ ">=", "$zoom", 13 ],
         [ "all",
           [ ">=", "$zoom", 3 ],

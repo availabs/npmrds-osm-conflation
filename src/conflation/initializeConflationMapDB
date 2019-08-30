@@ -81,7 +81,7 @@ pipe(
       ({ osmMetadata } = await shstMetadataDB.get(geometryId));
     } catch (err) {
       console.error(err);
-      console.warn('WARNING: No metadata found from shstGeometry', geometryId);
+      console.warn('WARNING: No metadata found for shstGeometry', geometryId);
     }
 
     if (osmMetadata && Array.isArray(osmMetadata.waySections)) {
