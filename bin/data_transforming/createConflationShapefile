@@ -2,14 +2,23 @@
 
 set -e
 
-if [ "$#" -ne 1 ]; then
-  (>&2 echo 'USAGE: You must provide the path to the output shapefile dir as the 1st and only CLI argument.')
+if [ "$#" -ne 2 ]; then
+  (>&2 echo 'USAGE: You must provide three positional CLI argument:')
+  (>&2 echo '         * 1st is the conflation output NDJSON file path')
+  (>&2 echo '         * 2nd is the output shapefile director path')
   exit 1
 fi
 
-mkdir -p "$1"
+if [ ! -f "$1" ]; then
+  (>&2 echo "ERROR: No file found at $1.")
+  exit 1
+fi
 
-OUTSHP="$( realpath "$1" )"
+INFILE="$( realpath "$1" )"
+
+mkdir -p "$2"
+
+OUTSHP="$( realpath "$2" )"
 
 cd "$( dirname "${BASH_SOURCE[0]}" )"
 
@@ -32,8 +41,6 @@ function cleanup {
 # register the cleanup function to be called on the EXIT signal
 trap cleanup EXIT
 
-echo "$WORK_DIR"
-
 a=0
 
 GEOJSON_OPEN='{"type":"FeatureCollection","name":"networkconflation","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[';
@@ -49,6 +56,7 @@ COL_RENAMING='
   s/networklevel/networklev/g
 '
 
+  # Create GeoJSON partition files of the input NDJSON file
   while IFS='' read -r line
   do
     n="$((a++/"$N"))"
@@ -69,13 +77,11 @@ COL_RENAMING='
     printf '%s' "$line" >> "$filename"
 
     ((ct+=1))
-  done < <(
-    ../../src/conflation/outputConflationNDJSON |
-      sed "$COL_RENAMING" 
-  )
+  done < <( sed "$COL_RENAMING" "$INFILE" )
 
 printf '%s' "$GEOJSON_CLOSE" >> "$filename"
 
+# Combine the GeoJSON partition files into a single directory style shapefile
 find "$WORK_DIR" -type f -name '*.geojson' |
   sort |
   while read -r f; do
