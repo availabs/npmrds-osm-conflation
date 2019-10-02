@@ -15,3 +15,6 @@ USAGE:
 ```
 ./bin/data_transforming/createConflationShapefile conflation.ndjson conflation_shapefile
 ```
+## network_level property in output
+
+This field refers to the SharedStreets roadClass. See the sharedstreets-js [roadClassConverter](https://github.com/sharedstreets/sharedstreets-js/blob/e159a1bb9e361e1e4f1dd3032d3ed6334465ad08/src/point_matcher.ts#L53-L73) function.
