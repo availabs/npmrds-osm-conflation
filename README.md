@@ -4,7 +4,7 @@ Currently this repository is a collection of problem solutions held together wit
 
 ## Creating a shapefile from the output NDJSON
 
-The `bin/data_transforming/createConflationShapefile` script transforms NDJSON into Esri Shapefiles.
+The [createConflationShapefile](bin/data_transforming/createConflationShapefile) script transforms NDJSON into Esri Shapefiles.
 
 It takes two positional CLI arguments:
 
