@@ -20,11 +20,14 @@ mkdir -p "$2"
 OUT_DIR="$( realpath "$2" )"
 
 pushd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null
+clean='--clean'
 
 find "$IN_DIR" -type f |
   sort |
   while read -r inf; do
-    ../shstMatching/shstMatchNPMRDS  "$inf" "$OUT_DIR"
+    echo "$inf"
+    ../shstMatching/shstMatchNPMRDS --npmrdsGeoJSON "$inf" --outputDir "$OUT_DIR" "$clean"
+    clean=''
   done
 
 popd >/dev/null

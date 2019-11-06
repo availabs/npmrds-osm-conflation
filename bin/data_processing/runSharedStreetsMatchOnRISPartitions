@@ -9,17 +9,25 @@ if [ "$#" -ne 2 ]; then
   exit 1
 fi
 
+if [ ! -d "$1" ]; then
+  (>&2 echo "ERROR: No directory found at at $1")
+  exit 1
+fi
+
 IN_DIR="$( realpath "$1" )"
 
 mkdir -p "$2"
 OUT_DIR="$( realpath "$2" )"
 
 pushd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null
+clean='--clean'
 
 find "$IN_DIR" -type f |
   sort |
   while read -r inf; do
-    ../shstMatching/shstMatchRIS  "$inf" "$OUT_DIR"
+    echo "$inf"
+    ../shstMatching/shstMatchRIS --risGeoJSON "$inf" --outputDir "$OUT_DIR" "$clean"
+    clean=''
   done
 
 popd >/dev/null

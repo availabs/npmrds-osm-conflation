@@ -1,14 +1,33 @@
 #!/usr/bin/env node
 
-// https://github.com/sharedstreets/sharedstreets-ref-system#core-concepts
+/*
+SEE: https://github.com/sharedstreets/sharedstreets-ref-system#core-concepts
+
+{
+  "inboundReferenceIds": [
+    "16efb4cc5d6a6388bb194406d456c31d",
+    "fc59734dc6988995ab3832cbf01138df",
+    "9b4cc0d2a6a638b72c712a37afde8c13"
+  ],
+  "outboundReferenceIds": [
+    "6ef3502d937a1a5c9ffddc5ca638b3b9",
+    "f9101168d69c6234aaf8239503cd1fb3",
+    "c0d660b52f05d51cc14a45631db2581f"
+  ],
+  "id": "80107464c868bcd9a9c8b7056814e7a0",
+  "nodeId": "5222590923",
+  "lon": -79.78760390000001,
+  "lat": 42.2306393
+}
+*/
+
 
 const { readdirSync, readFileSync } = require('fs');
 const { join } = require('path');
 const { pipe, from, through } = require('mississippi');
-const { chunk } = require('lodash');
+const { uniqWith, isEqual } = require('lodash');
 const { sync: rimrafSync } = require('rimraf');
 const { sync: mkdirpSync } = require('mkdirp');
-const { lineString } = require('@turf/helpers');
 
 const levelup = require('levelup');
 const leveldown = require('leveldown');
@@ -53,19 +72,17 @@ mkdirpSync(leveldbDir);
 
 const db = levelup(encode(leveldown(leveldbDir), { valueEncoding: 'json' }));
 
-const seenIds = new Set();
-
 // NOTE: IIFE (Immediately Invoked Function Expression)
-const geomsGenerator = (function* generator() {
+const intxnGenerator = (function* generator() {
   const tileFiles = readdirSync(tilesetDir).filter(f =>
-    f.match(/geometry\.\d+\.pbf$/)
+    f.match(/intersection\.\d+\.pbf$/)
   );
 
   for (let i = 0; i < tileFiles.length; ++i) {
     const inf = tileFiles[i];
 
     try {
-      const parser = sharedstreetsPbf.geometry;
+      const parser = sharedstreetsPbf.intersection;
 
       const d = parser(readFileSync(join(tilesetDir, inf)));
 
@@ -79,41 +96,32 @@ const geomsGenerator = (function* generator() {
 })();
 
 pipe(
-  from.obj(function geomReadStream(size, next) {
-    const { value: geom, done } = geomsGenerator.next();
-    if (!geom && done) {
+  from.obj(function intxnReadStream(size, next) {
+    const { value: intxnMeta, done } = intxnGenerator.next();
+    if (!intxnMeta && done) {
       return next(null, null);
     }
 
-    return next(null, geom);
+    return next(null, intxnMeta);
   }),
   through.obj(async function loader(d, _, cb) {
-    const {
-      id,
-      lonlats,
-      fromIntersectionId,
-      toIntersectionId,
-      forwardReferenceId,
-      backReferenceId,
-      roadClass
-    } = d;
+    const { id } = d;
 
-    if (seenIds.has(id)) {
-      console.warn('Warning: Duplicate geometry id');
+    let list;
+
+    try {
+      list = await db.get(id);
+    } catch (err) {
+      if (err.type === 'NotFoundError') {
+        list = [];
+      } else {
+        throw new Error(err);
+      }
     }
 
-    const coords = chunk(lonlats, 2);
+    list.push(d);
 
-    const geojson = lineString(coords, {
-      id,
-      fromIntersectionId,
-      toIntersectionId,
-      forwardReferenceId,
-      backReferenceId,
-      roadClass
-    });
-
-    await db.put(id, geojson);
+    await db.put(id, uniqWith(list, isEqual));
 
     return cb();
   }),

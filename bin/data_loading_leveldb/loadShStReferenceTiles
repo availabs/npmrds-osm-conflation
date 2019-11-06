@@ -52,6 +52,7 @@ mkdirpSync(leveldbDir);
 
 const db = levelup(encode(leveldown(leveldbDir), { valueEncoding: 'json' }));
 
+// NOTE: IIFE (Immediately Invoked Function Expression)
 const refsGenerator = (function* generator() {
   const tileFiles = readdirSync(tilesetDir).filter(f =>
     f.match(/reference\.\d+\.pbf$/)
