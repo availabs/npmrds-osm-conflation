@@ -1,86 +1,47 @@
-#!/bin/bash
+#!/usr/bin/env node
 
-# shellcheck disable=SC2086
+/* eslint no-param-reassign: 0 */
 
-# Creates a partition of the osm file for the county
+// USAGE: Pipe OSM file in through STDIN, get GeoJSON out through STDOUT
 
-# osm2pgrouting requires xml format
+// NOTE: There is a way to do all of this solely with ogr2ogr:
+//   https://github.com/OSGeo/gdal/blob/master/gdal/data/osmconf.ini
+//   https://gdal.org/drivers/vector/osm.html
+//   https://gis.stackexchange.com/questions/215948/splitting-other-tags-from-osm-file
 
-# See:
-#   https://github.com/pgRouting/osm2pgrouting#tips
-#   https://wiki.openstreetmap.org/wiki/Osmosis
-#   https://wiki.openstreetmap.org/wiki/Osmosis/Detailed_Usage_0.47
-#   https://wiki.openstreetmap.org/wiki/Osmosis/Polygon_Filter_File_Format
+const { exec } = require('child_process');
+const { duplex, pipe, through } = require('mississippi');
+const split = require('split2');
 
-set -e
-set -a
+const { stdin: subSTDIN, stdout: subSTDOUT, stderr: subSTDERR } = exec(
+  "ogr2ogr -f 'GeoJSON' /vsistdout/ /vsistdin/ lines | jq -c '.features[]'"
+);
 
+const xml2NdjsonStream = duplex(subSTDIN, subSTDOUT);
 
-if [ "$#" -ne 2 ]; then
-  (>&2 echo 'USAGE: You must provide two CLI argument. 1st is the county name. 2nd is the output format (xml or pbf).')
-  exit 1
-fi
+subSTDERR.pipe(process.stderr);
 
-COUNTY="${1,,}"
-FORMAT="${2,,}"
+pipe(
+  process.stdin,
+  xml2NdjsonStream,
+  split(JSON.parse),
+  through.obj(function otherTagsExpander(feature, _, cb) {
+    const { other_tags } = feature.properties;
 
-if [ "$FORMAT" != 'xml' ] && [ "$FORMAT" != 'pbf' ]; then
-  (>&2 echo "ERROR: Unrecognized the output format. The supported formats are xml and pbf.")
-  exit 1
-fi
+    if (other_tags) {
+      const parsed_other_tags = JSON.parse(
+        `{${other_tags.replace(/=>/g, ':')}}`
+      );
 
+      Object.assign(feature.properties, parsed_other_tags);
 
-pushd "$( dirname "${BASH_SOURCE[0]}" )/" >/dev/null
+      // do not output the pre-parsed other_tags property
+      feature.properties.other_tags = undefined;
+    }
 
-# source the database connection config.
-. ../.env
+    this.push(`${JSON.stringify(feature)}\n`);
 
-SQL="
-  SELECT
-      ST_ConvexHull(
-        ST_Collect(
-          wkb_geometry
-        )
-      ) AS bpoly
-    FROM public.npmrds_extended_shapefile
-    WHERE (
-      LOWER(county) = '$COUNTY'
-    )
-  ;
-"
-
-# Get the county bounding polygon as a string variable
-BOUNDING_POLY="$COUNTY
-tmc_convex_hull
-$(
-  ogr2ogr -s_srs EPSG:4326 -t_srs EPSG:4326 -f GeoJSON /vsistdout/ \
-      "PG:host=${PGHOST} port=${PGPORT} user=${PGUSER} dbname=${PGDATABASE} password=${PGPASSWORD}" \
-      -sql "$SQL" |
-    jq '.features|map(.geometry.coordinates)|flatten[]' |
-    paste -s -d' \n' |
-    column -t |
-    sed 's/^/  /'
-)
-END
-END"
-
-[ "$FORMAT" == 'xml' ] && FORMAT_FLAGS='--write-xml' || FORMAT_FLAGS='--write-pbf omitmetadata=true'
-
-  # --tf accept-ways highway=motorway,trunk,primary,secondary,tertiary,unclassified \
-  # --tf accept-ways highway=motorway,trunk,primary,secondary,tertiary,unclassified,residential,motorway_link,trunk_link,primary_link,secondary_link,tertiary_link
-  # --tf accept-ways highway=motorway,trunk,primary,secondary,tertiary,unclassified,residential,motorway_link,trunk_link,primary_link,secondary_link\
-
-  ## This one seemed to work for NPMRDS/ShSt/pgR, but not high resolution enough for RIS.
-  # --tf accept-ways highway=motorway,trunk,primary,secondary,tertiary,unclassified,residential,motorway_link,trunk_link \
-    # highway=motorway,trunk,primary,secondary,tertiary,unclassified,residential,motorway_link,trunk_link,primary_link,secondary_link,tertiary_link,service,living_street\
-
-osmosis \
-  --read-pbf file=./data/osm/new-york.osm.pbf \
-  --tf accept-ways \
-    highway=*\
-  --bounding-polygon file=<( echo "$BOUNDING_POLY" ) completeWays=true \
-  --used-node \
-  $FORMAT_FLAGS file=/dev/stdout
-
-popd >/dev/null
-
+    return cb();
+  }),
+  process.stdout
+);

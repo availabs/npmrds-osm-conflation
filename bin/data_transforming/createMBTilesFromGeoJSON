@@ -46,6 +46,9 @@ FILTER='
   }
 '
 
+# FIXME: To reduce the size of the generated mbtiles
+#   1. Move segment ID from feature properties to object root and get rid of generate-ids flag.
+#   2. Rename all fields to a single letter code.
 tippecanoe \
   --layer=network_conflation \
   --generate-ids \
