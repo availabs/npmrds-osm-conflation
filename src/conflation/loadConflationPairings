@@ -339,6 +339,7 @@ pipe(
 
       for (
         let toAddIdx = 1;
+        // NOTE: networkRankedToAddOffsets array length may increase within loop
         toAddIdx < networkRankedToAddOffsets.length;
         ++toAddIdx
       ) {
@@ -386,6 +387,7 @@ pipe(
             toAdd.endDist = alreadyAdded.startDist;
           }
 
+          // Split toAdd case
           if (
             // toAdd      :  o-------o
             // alreadyAdded:   o---o
@@ -399,6 +401,7 @@ pipe(
             toAdd.endDist = alreadyAdded.startDist;
             toAddClone.startDist = alreadyAdded.endDist;
 
+            // Change arithmetic based to simpler inequality
             if (toAddClone.endDist - toAddClone.startDist > 0) {
               networkRankedToAddOffsets.splice(toAddIdx + 1, 0, toAddClone);
             }

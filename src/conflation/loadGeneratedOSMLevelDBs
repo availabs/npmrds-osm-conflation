@@ -36,6 +36,7 @@ const TMP_NODES_LOOKUP_BY_COORD_DIR = join(
 
 const TMP_WAYS_LOOKUP_DIR = join(dbsParentDir, 'tmp-WaysLookupBy');
 
+// TODO: Take yargs --clean flag on whether to clean.
 rimrafSync(CONFLATION_NODES_DIR);
 rimrafSync(CONFLATION_WAYS_DIR);
 rimrafSync(CONFLATION_FEATURES_DIR);
@@ -250,18 +251,20 @@ const loadWays = () => {
           tags: Object.assign(
             {},
             { OSM, NPMRDS, RIS },
-            osmWay && osmWay.tags,
+            osmWay && _.omit(osmWay.tags, ['oneway']),
             _.mapKeys(
               _.omit(feature.properties, [
                 'osmMetadata',
                 'fsystem',
                 'OSM',
                 'RIS',
-                'NPMRDS'
+                'NPMRDS',
+                'oneway',
+                'oneWay'
               ]),
               (v, k) => `sharedstreets:${k}`
             ),
-            { oneWay: 'yes' }
+            { oneway: 'yes', oneWay: 'yes' }
           )
         };
 
@@ -279,7 +282,7 @@ const loadWays = () => {
         };
 
         if (feature.properties.osmMetadata.oneWay) {
-          conflationFeature.properties.networklevel += 0.5
+          conflationFeature.properties.networklevel += 0.5;
         }
 
         await Promise.all([
