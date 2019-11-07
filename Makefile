@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 
 MKFILE_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
-OSM_DATA_DIR=./data/osm_fake
+OSM_DATA_DIR=./data/osm
 OSM_PLANET_VERSION=181224
 SHST_TILES_DIR=data/sharedstreets/shst_tiles_pbf
 
