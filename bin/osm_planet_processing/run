@@ -1,0 +1,130 @@
+#!/usr/bin/env node
+
+/* eslint no-unused-expressions: 0 */
+
+const { spawnSync } = require('child_process');
+
+const yargs = require('yargs');
+
+const yargArgs = {
+  osm_planet_version: {
+    type: 'number',
+    demand: true,
+    description: 'The OSM planet version.'
+  },
+
+  osm_data_dir: {
+    type: 'string',
+    demand: true,
+    description: 'The directory in which the OSM data files are written.'
+  }
+};
+
+const downloadOSMPlanet = ({ osm_planet_version, osm_data_dir }) => {
+  const script = './download_osm_planet';
+  const { status } = spawnSync(script, {
+    cwd: __dirname,
+    stdio: 'inherit',
+    env: {
+      OSM_PLANET_VERSION: osm_planet_version,
+      OSM_DATA_DIR: osm_data_dir
+    }
+  });
+
+  if (status !== 0) {
+    throw Error(`ERROR: ${script} failed.`);
+  }
+
+  console.log('OSM planet version downloaded.');
+};
+
+const downloadNewYorkPolygonFile = ({ osm_data_dir }) => {
+  const script = './download_newyork_polygon';
+  const { status } = spawnSync(script, {
+    cwd: __dirname,
+    stdio: 'inherit',
+    env: {
+      OSM_DATA_DIR: osm_data_dir
+    }
+  });
+
+  if (status !== 0) {
+    throw Error(`ERROR: ${script} failed.`);
+  }
+
+  console.log('New York polygon file downloaded.');
+};
+
+const extractNYSFromOSMPlanet = ({ osm_planet_version, osm_data_dir }) => {
+  const script = './extract_nys_from_osm_planet';
+  const { status } = spawnSync(script, {
+    cwd: __dirname,
+    stdio: 'inherit',
+    env: {
+      OSM_PLANET_VERSION: osm_planet_version,
+      OSM_DATA_DIR: osm_data_dir
+    }
+  });
+
+  if (status !== 0) {
+    throw Error(`ERROR: ${script} failed.`);
+  }
+
+  console.log('NYS extracted from OSM planet version.');
+};
+
+yargs
+  .parserConfiguration({
+    'camel-case-expansion': false,
+    'flatten-duplicate-arrays': false
+  })
+  .command({
+    command: 'download_osm_planet',
+    desc:
+      'Download the specified OSM planet version in PBF format from https://ftpmirror.your.org/pub/openstreetmap into the specified directory.',
+    builder: {
+      osm_planet_version: yargArgs.osm_planet_version,
+      osm_data_dir: yargArgs.osm_data_dir
+    },
+    handler(cliArgs) {
+      try {
+        downloadOSMPlanet(cliArgs);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  })
+  .command({
+    command: 'download_newyork_polygon',
+    desc:
+      'Download the New York State polygon file from geofabrik.de. This file is used to extract NYS from the entire OSM planet.',
+    builder: {
+      osm_data_dir: yargArgs.osm_data_dir
+    },
+    handler(cliArgs) {
+      try {
+        downloadNewYorkPolygonFile(cliArgs);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  })
+  .command({
+    command: 'extract_nys_from_osm_planet',
+    desc: 'Extract the NYS region from the OSM planet version file.',
+    builder: {
+      osm_planet_version: yargArgs.osm_planet_version,
+      osm_data_dir: yargArgs.osm_data_dir
+    },
+    handler(cliArgs) {
+      try {
+        extractNYSFromOSMPlanet(cliArgs);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  })
+  .demandCommand()
+  .recommendCommands()
+  .strict()
+  .wrap(yargs.terminalWidth() / 1.618).argv;

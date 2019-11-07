@@ -1,0 +1,74 @@
+#!/bin/bash
+
+set -Ee
+
+OSM_PBF_FILE_TYPE_DESCRIPTION='OpenStreetMap Protocolbuffer Binary Format'
+
+print_usage()
+{
+  (>&2 cat <<- _EOF_
+NAME: extract_nys_from_osm_planet
+
+SYNOPSIS:
+    OSM_PLANET_VERSION=version OSM_DATA_DIR=directory extract_nys_from_osm_planet
+
+DESCRIPTION:
+  Extract the NYS region from the OSM planet version PBF file.
+
+  Requires the following two ENV variables to be set:
+      * OSM_PLANET_VERSION
+      * OSM_DATA_DIR
+_EOF_
+  )
+}
+
+if [ -z "$OSM_DATA_DIR" ] || [ -z "$OSM_PLANET_VERSION" ]; then
+  print_usage
+  exit 1
+fi
+
+source ./set_convention_vars
+
+if [ -f "$OSM_NYS_FILE" ]; then
+  (>&2 echo "WARNING: $OSM_NYS_FILE already exists. Skipping extraction.")
+  exit 0
+fi
+
+# clean up the download file.
+cleanup() {
+  rm -f "$OSM_NYS_FILE"
+}
+trap cleanup ERR
+
+validate_osm_planet_file_for_nys_extraction() {
+  if [ ! -f "$OSM_PLANET_FILE_PATH" ]; then
+    (>&2 echo "ERROR: No file found at $OSM_PLANET_FILE_PATH")
+    exit 1
+  elif file "$OSM_PLANET_FILE_PATH" | grep --invert-match --quiet "$OSM_PBF_FILE_TYPE_DESCRIPTION"; then
+    (>&2 echo "ERROR: The OSM_PLANET_FILE_PATH must be in $OSM_PBF_FILE_TYPE_DESCRIPTION")
+    exit 1
+  fi
+}
+
+extract_nys_from_planet() {
+  # https://wiki.openstreetmap.org/wiki/Osmosis/Detailed_Usage_0.41#--used-node_.28--un.29
+  #   --used-node (--un)
+  #     Restricts output of nodes to those that are used in ways and relations.
+  #
+  #   omitmetadata
+  #       Omit non-geographic metadata on OSM entities.
+  #       This includes version number and timestamp of the last edit to the entity
+  #         as well as the user name and id of the last modifier.
+  #       Omitting this metadata can save 15% of the file size when exporting to
+  #         software that does not need this data.
+  osmosis \
+    --read-pbf file="$OSM_PLANET_FILE_PATH" \
+    --bounding-polygon file="$NYS_POLY_FILE_PATH" completeWays=true \
+    --used-node \
+    --write-pbf omitmetadata=true file="$OSM_NEW_YORK_FILE_PATH"
+}
+
+
+##### MAIN
+validate_osm_planet_file_for_nys_extraction
+extract_nys_from_planet
