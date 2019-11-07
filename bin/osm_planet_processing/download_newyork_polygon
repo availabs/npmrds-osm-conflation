@@ -35,4 +35,8 @@ remove_download_file() {
 }
 trap cleanup ERR
 
-curl 'http://download.geofabrik.de/north-america/us/new-york.poly' > "$NYS_POLY_FILE_PATH"
+if [ ! -f "$NYS_POLY_FILE_PATH" ]; then
+  curl 'http://download.geofabrik.de/north-america/us/new-york.poly' > "$NYS_POLY_FILE_PATH"
+else
+  (>&2 echo "WARNING: $NYS_POLY_FILE_PATH already exists. Skipping download.")
+fi

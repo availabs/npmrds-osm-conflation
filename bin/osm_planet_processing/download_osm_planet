@@ -44,16 +44,6 @@ _EOF_
 # If this file encounters an ERROR, print potential file corruption warning.
 trap warn_of_potential_file_corruption ERR
 
-download_osm_planet() {
-  if [ ! -f "$OSM_PLANET_FILE_PATH" ]; then
-    mkdir -p "$( dirname "$OSM_PLANET_FILE_PATH" )"
-    (>&2 echo "Downloading $OSM_PLANET_VERSION_URL")
-    curl "$OSM_PLANET_VERSION_URL" > "$OSM_PLANET_FILE_PATH"
-  else
-    (>&2 echo "WARNING: $OSM_PLANET_FILE_PATH already exists. Skipping download.")
-  fi
-}
-
 check_downloaded_osm_planet_md5sum() {
   OSM_PLANET_MD5SUM_FILE_NAME="$OSM_PLANET_FILE_NAME.md5"
   OSM_PLANET_MD5SUM_FILE_PATH="$OSM_PLANET_FILE_PATH.md5"
@@ -70,6 +60,18 @@ check_downloaded_osm_planet_md5sum() {
   popd >/dev/null
 }
 
+download_osm_planet() {
+  if [ ! -f "$OSM_PLANET_FILE_PATH" ]; then
+    mkdir -p "$( dirname "$OSM_PLANET_FILE_PATH" )"
+    (>&2 echo "Downloading $OSM_PLANET_VERSION_URL")
+    curl "$OSM_PLANET_VERSION_URL" > "$OSM_PLANET_FILE_PATH"
+
+    check_downloaded_osm_planet_md5sum
+  else
+    (>&2 echo "WARNING: $OSM_PLANET_FILE_PATH already exists. Skipping download.")
+  fi
+
+}
+
 ### MAIN
 download_osm_planet
-check_downloaded_osm_planet_md5sum

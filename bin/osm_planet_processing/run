@@ -3,6 +3,7 @@
 /* eslint no-unused-expressions: 0 */
 
 const { spawnSync } = require('child_process');
+const { join } = require('path')
 
 const yargs = require('yargs');
 
@@ -27,7 +28,7 @@ const downloadOSMPlanet = ({ osm_planet_version, osm_data_dir }) => {
     stdio: 'inherit',
     env: {
       OSM_PLANET_VERSION: osm_planet_version,
-      OSM_DATA_DIR: osm_data_dir
+      OSM_DATA_DIR: join(process.cwd(), osm_data_dir)
     }
   });
 
@@ -44,15 +45,13 @@ const downloadNewYorkPolygonFile = ({ osm_data_dir }) => {
     cwd: __dirname,
     stdio: 'inherit',
     env: {
-      OSM_DATA_DIR: osm_data_dir
+      OSM_DATA_DIR: join(process.cwd(), osm_data_dir)
     }
   });
 
   if (status !== 0) {
     throw Error(`ERROR: ${script} failed.`);
   }
-
-  console.log('New York polygon file downloaded.');
 };
 
 const extractNYSFromOSMPlanet = ({ osm_planet_version, osm_data_dir }) => {
@@ -62,15 +61,13 @@ const extractNYSFromOSMPlanet = ({ osm_planet_version, osm_data_dir }) => {
     stdio: 'inherit',
     env: {
       OSM_PLANET_VERSION: osm_planet_version,
-      OSM_DATA_DIR: osm_data_dir
+      OSM_DATA_DIR: join(process.cwd(), osm_data_dir)
     }
   });
 
   if (status !== 0) {
     throw Error(`ERROR: ${script} failed.`);
   }
-
-  console.log('NYS extracted from OSM planet version.');
 };
 
 yargs
@@ -118,6 +115,23 @@ yargs
     },
     handler(cliArgs) {
       try {
+        extractNYSFromOSMPlanet(cliArgs);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  })
+  .command({
+    command: 'process_nys_osm',
+    desc: 'download_osm_planet, download_newyork_polygon, and extract_nys_from_osm_planet',
+    builder: {
+      osm_planet_version: yargArgs.osm_planet_version,
+      osm_data_dir: yargArgs.osm_data_dir
+    },
+    handler(cliArgs) {
+      try {
+        downloadOSMPlanet(cliArgs)
+        downloadNewYorkPolygonFile(cliArgs)
         extractNYSFromOSMPlanet(cliArgs);
       } catch (err) {
         console.error(err);

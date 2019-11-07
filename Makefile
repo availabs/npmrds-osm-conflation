@@ -2,7 +2,8 @@
 SHELL := /bin/bash
 
 MKFILE_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
-OSM_PLANET_VER=181224
+OSM_DATA_DIR=./data/osm_fake
+OSM_PLANET_VERSION=181224
 SHST_TILES_DIR=data/sharedstreets/shst_tiles_pbf
 
 # https://www.gnu.org/software/make/manual/make.html#Special-Targets
@@ -28,105 +29,110 @@ lib/lev2:
 
 init: node_modules lib/sharedstreets-builder-0.3.1.jar
 
-data/npmrds/county_geojson: init
-	@./bin/data_transforming/createNpmrdsCountyGeoJSONs \
-		--tmcIdentificationFile data/npmrds/TMC_Identification.csv \
-		--npmrdsShapefileZipFile data/npmrds/inrix_expanded.zip \
-		--outDir data/npmrds/county_geojson
-
-data/ris/county_geojson: init
-	@./bin/data_transforming/createRisCountyGeoJSONs \
-		--risGeodatabaseZip ./data/ris/RISDuplicate.gdb.zip \
-		--outDir data/ris/county_geojson
-
-data/npmrds/county_geojson_partitions: data/npmrds/county_geojson
-	@./bin/data_partitioning/partitionCountyGeoJSONsByBoundingBoxes \
-		./data/npmrds/county_geojson \
-		./data/npmrds/county_geojson_partitions
-
-data/ris/county_geojson_partitions: data/ris/county_geojson
-	@./bin/data_partitioning/partitionCountyGeoJSONsByBoundingBoxes \
-		./data/ris/county_geojson \
-		./data/ris/county_geojson_partitions
-
-data/sharedstreets/shst_matched_npmrds:
-	./bin/data_processing/runSharedStreetsMatchOnNPMRDSPartitions \
-		data/npmrds/county_geojson_partitions \
-		data/sharedstreets/shst_matched_npmrds
-		
-data/sharedstreets/shst_matched_ris:
-	./bin/data_processing/runSharedStreetsMatchOnRISPartitions \
-		data/ris/county_geojson_partitions \
-		data/sharedstreets/shst_matched_ris
-		
-sharedstreets_match: data/sharedstreets/shst_matched_npmrds data/sharedstreets/shst_matched_ris
-
-data/sharedstreets/shst_tiles_pbf:
-	./bin/data_getting/copySharedStreetsTileCache \
-		"${HOME}/.shst/cache/tiles/osm/planet-${OSM_PLANET_VER}" \
-		"${SHST_TILES_DIR}"
-
-# This one's just for creating a directory of easily inspectable tiles.
-#   Not really part of the pipeline.
-data/sharedstreets/shst_tiles_ndjson:
-	./bin/data_transforming/tileSetToNDJSON \
-		--tilesetDir "${SHST_TILES_DIR}" \
-		--outputDir data/sharedstreets/shst_tiles_ndjson \
-		--clean
-
-scrapeMissingSharedStreetsGeometryFiles:
-	./bin/data_getting/scrapeMissingSharedStreetsGeometryFiles \
-		--tilesetDir ./data/sharedstreets/shst_tiles_pbf \
-		--shstMatchedNpmrdsDir data/npmrds/shst_matched \
-		--shstMatchedRisDir data/ris/shst_matched
-
-scrapeMissingSharedStreetsMetadataTiles:
-	./bin/data_getting/scrapeMissingSharedStreetsMetadataTiles "${OSM_PLANET_VER}" "${SHST_TILES_DIR}"
-
-scrapeMissingSharedStreetsIntersectionTiles:
-	./bin/data_getting/scrapeMissingSharedStreetsIntersectionTiles "${OSM_PLANET_VER}" "${SHST_TILES_DIR}"
-
-data/leveldb/shstGeometry:
-	./bin/data_loading_leveldb/loadShStGeometryTiles \
-		--tilesetDir data/sharedstreets/shst_tiles_pbf \
-		--leveldbDir data/leveldb/shstGeometry \
-		--clean
-
-data/leveldb/shstReference:
-	./bin/data_loading_leveldb/loadShStReferenceTiles \
-		--tilesetDir data/sharedstreets/shst_tiles_pbf \
-		--leveldbDir data/leveldb/shstReference \
-		--clean
-
-data/leveldb/shstMetadata:
-	./bin/data_loading_leveldb/loadShStMetadataTiles \
-		--tilesetDir data/sharedstreets/shst_tiles_pbf \
-		--leveldbDir data/leveldb/shstMetadata \
-		--clean
-
-load_sharedstreets_tiles_into_leveldb: data/leveldb/shstGeometry data/leveldb/shstReference data/leveldb/shstMetadata
-
-data/leveldb/shstMatchedNpmrds:
-	./bin/data_loading_leveldb/loadSharedStreetsMatchedNPMRDS \
-		--shstMatchedDir ./data/sharedstreets/shst_matched_npmrds \
-		--leveldbDir ./data/leveldb/shstMatchedNpmrds \
-		--clean
-
-data/leveldb/shstMatchedRis:
-	./bin/data_loading_leveldb/loadSharedStreetsMatchedRIS \
-		--shstMatchedDir ./data/sharedstreets/shst_matched_ris \
-		--leveldbDir ./data/leveldb/shstMatchedRis \
-		--clean
-
-# https://wiki.openstreetmap.org/wiki/Osmosis/Detailed_Usage_0.47#--used-node_.28--un.29
-#   Restricts output of nodes to those that are used in ways and relations.
-data/osm/new-york-181224.osm:
-	@osmosis --read-pbf file=data/osm/new-york-181224.osm.pbf --used-node --write-xml file=new-york-181224.osm
-
-load_sharedstreets_match_output: data/leveldb/shstMatchedNpmrds data/leveldb/shstMatchedRis
-
-load_osm_into_leveldb: data/osm/new-york-181224.osm
-	@./bin/data_loading_leveldb/loadOSM \
-		--osmFile ./data/osm/new-york-181224.osm \
-		--dbsParentDir ./data/leveldb/ \
-		--clean
+${OSM_DATA_DIR}/new-york-${OSM_PLANET_VERSION}.osm.pbf:
+	@./bin/osm_planet_processing/run extract_nys_from_osm_planet \
+		--osm_planet_version="${OSM_PLANET_VERSION}" \
+		--osm_data_dir="${OSM_DATA_DIR}"
+	
+# data/npmrds/county_geojson: init
+# 	@./bin/data_transforming/createNpmrdsCountyGeoJSONs \
+# 		--tmcIdentificationFile data/npmrds/TMC_Identification.csv \
+# 		--npmrdsShapefileZipFile data/npmrds/inrix_expanded.zip \
+# 		--outDir data/npmrds/county_geojson
+# 
+# data/ris/county_geojson: init
+# 	@./bin/data_transforming/createRisCountyGeoJSONs \
+# 		--risGeodatabaseZip ./data/ris/RISDuplicate.gdb.zip \
+# 		--outDir data/ris/county_geojson
+# 
+# data/npmrds/county_geojson_partitions: data/npmrds/county_geojson
+# 	@./bin/data_partitioning/partitionCountyGeoJSONsByBoundingBoxes \
+# 		./data/npmrds/county_geojson \
+# 		./data/npmrds/county_geojson_partitions
+# 
+# data/ris/county_geojson_partitions: data/ris/county_geojson
+# 	@./bin/data_partitioning/partitionCountyGeoJSONsByBoundingBoxes \
+# 		./data/ris/county_geojson \
+# 		./data/ris/county_geojson_partitions
+# 
+# data/sharedstreets/shst_matched_npmrds:
+# 	./bin/data_processing/runSharedStreetsMatchOnNPMRDSPartitions \
+# 		data/npmrds/county_geojson_partitions \
+# 		data/sharedstreets/shst_matched_npmrds
+# 		
+# data/sharedstreets/shst_matched_ris:
+# 	./bin/data_processing/runSharedStreetsMatchOnRISPartitions \
+# 		data/ris/county_geojson_partitions \
+# 		data/sharedstreets/shst_matched_ris
+# 		
+# sharedstreets_match: data/sharedstreets/shst_matched_npmrds data/sharedstreets/shst_matched_ris
+# 
+# data/sharedstreets/shst_tiles_pbf:
+# 	./bin/data_getting/copySharedStreetsTileCache \
+# 		"${HOME}/.shst/cache/tiles/osm/planet-${OSM_PLANET_VERSION}" \
+# 		"${SHST_TILES_DIR}"
+# 
+# # This one's just for creating a directory of easily inspectable tiles.
+# #   Not really part of the pipeline.
+# data/sharedstreets/shst_tiles_ndjson:
+# 	./bin/data_transforming/tileSetToNDJSON \
+# 		--tilesetDir "${SHST_TILES_DIR}" \
+# 		--outputDir data/sharedstreets/shst_tiles_ndjson \
+# 		--clean
+# 
+# scrapeMissingSharedStreetsGeometryFiles:
+# 	./bin/data_getting/scrapeMissingSharedStreetsGeometryFiles \
+# 		--tilesetDir ./data/sharedstreets/shst_tiles_pbf \
+# 		--shstMatchedNpmrdsDir data/npmrds/shst_matched \
+# 		--shstMatchedRisDir data/ris/shst_matched
+# 
+# scrapeMissingSharedStreetsMetadataTiles:
+# 	./bin/data_getting/scrapeMissingSharedStreetsMetadataTiles "${OSM_PLANET_VERSION}" "${SHST_TILES_DIR}"
+# 
+# scrapeMissingSharedStreetsIntersectionTiles:
+# 	./bin/data_getting/scrapeMissingSharedStreetsIntersectionTiles "${OSM_PLANET_VERSION}" "${SHST_TILES_DIR}"
+# 
+# data/leveldb/shstGeometry:
+# 	./bin/data_loading_leveldb/loadShStGeometryTiles \
+# 		--tilesetDir data/sharedstreets/shst_tiles_pbf \
+# 		--leveldbDir data/leveldb/shstGeometry \
+# 		--clean
+# 
+# data/leveldb/shstReference:
+# 	./bin/data_loading_leveldb/loadShStReferenceTiles \
+# 		--tilesetDir data/sharedstreets/shst_tiles_pbf \
+# 		--leveldbDir data/leveldb/shstReference \
+# 		--clean
+# 
+# data/leveldb/shstMetadata:
+# 	./bin/data_loading_leveldb/loadShStMetadataTiles \
+# 		--tilesetDir data/sharedstreets/shst_tiles_pbf \
+# 		--leveldbDir data/leveldb/shstMetadata \
+# 		--clean
+# 
+# load_sharedstreets_tiles_into_leveldb: data/leveldb/shstGeometry data/leveldb/shstReference data/leveldb/shstMetadata
+# 
+# data/leveldb/shstMatchedNpmrds:
+# 	./bin/data_loading_leveldb/loadSharedStreetsMatchedNPMRDS \
+# 		--shstMatchedDir ./data/sharedstreets/shst_matched_npmrds \
+# 		--leveldbDir ./data/leveldb/shstMatchedNpmrds \
+# 		--clean
+# 
+# data/leveldb/shstMatchedRis:
+# 	./bin/data_loading_leveldb/loadSharedStreetsMatchedRIS \
+# 		--shstMatchedDir ./data/sharedstreets/shst_matched_ris \
+# 		--leveldbDir ./data/leveldb/shstMatchedRis \
+# 		--clean
+# 
+# # https://wiki.openstreetmap.org/wiki/Osmosis/Detailed_Usage_0.47#--used-node_.28--un.29
+# #   Restricts output of nodes to those that are used in ways and relations.
+# data/osm/new-york-181224.osm:
+# 	@osmosis --read-pbf file=data/osm/new-york-181224.osm.pbf --used-node --write-xml file=new-york-181224.osm
+# 
+# load_sharedstreets_match_output: data/leveldb/shstMatchedNpmrds data/leveldb/shstMatchedRis
+# 
+# load_osm_into_leveldb: data/osm/new-york-181224.osm
+# 	@./bin/data_loading_leveldb/loadOSM \
+# 		--osmFile ./data/osm/new-york-181224.osm \
+# 		--dbsParentDir ./data/leveldb/ \
+# 		--clean
