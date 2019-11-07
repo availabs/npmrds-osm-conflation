@@ -16,7 +16,7 @@ if [ ! -z "$OSM_PLANET_VERSION" ]; then
   export OSM_PLANET_VERSION_MD5SUM_URL="$OSM_PLANET_VERSION_URL.md5"
 
   export OSM_PLANET_FILE_NAME="planet-$OSM_PLANET_VERSION.osm.pbf"
-  export OSM_NYS_FILE_NAME="newy-york-$OSM_PLANET_VERSION.osm.pbf"
+  export OSM_NYS_FILE_NAME="new-york-$OSM_PLANET_VERSION.osm.pbf"
 fi
 
 if [ ! -z  "$OSM_DATA_DIR" ] && [ ! -z "$OSM_PLANET_FILE_NAME" ]; then
