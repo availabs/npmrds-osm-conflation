@@ -1,0 +1,101 @@
+#!/usr/bin/env node
+
+/* eslint no-unused-expressions: 0 */
+
+const { readdirSync } = require('fs');
+const { exec } = require('child_process');
+const { promisify } = require('util');
+const { isAbsolute, join } = require('path');
+
+const yargs = require('yargs');
+
+const execAsync = promisify(exec);
+
+const TMC_IDENTIFICATION = 'TMC_Identification.csv';
+const NPMRDS_SHAPEFILE_ZIP = 'npmrds_shapefile.zip';
+
+const COUNTY_PARTITIONER = join(__dirname, './createNpmrdsCountyGeoJSONs');
+
+const runCountyPartionScript = yearSubDir =>
+  execAsync(
+    `${COUNTY_PARTITIONER} \
+        --tmc_identification=${join(yearSubDir, TMC_IDENTIFICATION)} \
+        --npmrds_shapefile_zip=${join(yearSubDir, NPMRDS_SHAPEFILE_ZIP)} \
+        --output_dir=${join(yearSubDir, 'county_geojsons')}`
+  );
+
+const getAbsPath = path =>
+  isAbsolute(path) ? path : join(process.cwd(), path);
+
+const getYearSubDirs = dir => {
+  const yearSubDirs = readdirSync(dir, { withFileTypes: true })
+    .filter(dirent => dirent.isDirectory() && /^\d{4}$/.test(dirent.name))
+    .map(dirent => join(dir, dirent.name))
+    .filter(subDirPath => {
+      const subDirFiles = readdirSync(subDirPath, {
+        withFileTypes: true
+      })
+        .filter(dirent => dirent.isFile())
+        .map(({ name }) => name);
+
+      const containsRequiredFiles =
+        subDirFiles.includes(TMC_IDENTIFICATION) &&
+        subDirFiles.includes(NPMRDS_SHAPEFILE_ZIP);
+
+      if (!containsRequiredFiles) {
+        console.warn(
+          `WARNING: ${subDirPath} lacks the required files ${TMC_IDENTIFICATION} and ${NPMRDS_SHAPEFILE_ZIP}`
+        );
+        return false;
+      }
+      return true;
+    });
+
+  return yearSubDirs.length ? yearSubDirs : null;
+};
+
+yargs
+  .parserConfiguration({
+    'camel-case-expansion': false,
+    'flatten-duplicate-arrays': false
+  })
+  .command({
+    command: 'process_npmrds_metadata',
+    desc: '',
+    builder: {
+      npmrds_data_dir: {
+        type: 'string',
+        demand: true,
+        description: 'The directory in which the NPMRDS data files are written.'
+      }
+    },
+    async handler({ npmrds_data_dir }) {
+      try {
+        const dir = getAbsPath(npmrds_data_dir);
+        const yearSubDirs = getYearSubDirs(dir);
+
+        if (!Array.isArray(yearSubDirs)) {
+          throw new Error(`ERROR: no valid year subdirectories in ${dir}`);
+        }
+
+        const results = await Promise.all(
+          yearSubDirs.map(yearSubDir => runCountyPartionScript(yearSubDir))
+        );
+
+        yearSubDirs.forEach((yearSubDir, i) =>
+          console.log(
+            JSON.stringify({
+              year_sub_dir: yearSubDir,
+              process_output: results[i]
+            })
+          )
+        );
+      } catch (err) {
+        console.error(err);
+      }
+    }
+  })
+  .demandCommand()
+  .recommendCommands()
+  .strict()
+  .wrap(yargs.terminalWidth() / 1.618).argv;
