@@ -29,7 +29,7 @@ pushd "$( dirname "${BASH_SOURCE[0]}" )/../../" >/dev/null
 outf="$OUT_DIR/${OUTF_BASE}.motorways.geojson"
 echo "$outf"
 
-# Because these counties crashe the matcher,
+# Because these counties crashed the matcher,
 #  and the matcher doesn't clean up after it crashes
 #  thereby breaking the surface-streets matching.
 if ! [[ "${OUTF_BASE,,}" =~ (franklin|hamilton|wyoming) ]]; then

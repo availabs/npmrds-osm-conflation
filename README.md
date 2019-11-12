@@ -18,3 +18,13 @@ USAGE:
 ## network_level property in output
 
 This field refers to the SharedStreets roadClass. See the sharedstreets-js [roadClassConverter](https://github.com/sharedstreets/sharedstreets-js/blob/e159a1bb9e361e1e4f1dd3032d3ed6334465ad08/src/point_matcher.ts#L53-L73) function.
+
+
+NOTES:
+
+# Complete Searchable & Replayable Archive of Pipeline Input/Output
+
+  By keeping all input data and intermediate transformations,
+    along with extensive logging, we can "show all of our work."
+    Keeping repeatable, searchable, archives of state through the pipelines.
+

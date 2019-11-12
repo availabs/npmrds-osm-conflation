@@ -65,27 +65,6 @@ preprocess_ris:
 
 npmrds/partitioned_county_geojsons: ${NPMRDS_PARTITIONED_COUNTY_GEOJSONS_DIR}
 	
-# data/npmrds/county_geojson: init
-# 	@./bin/data_transforming/createNpmrdsCountyGeoJSONs \
-# 		--tmcIdentificationFile data/npmrds/TMC_Identification.csv \
-# 		--npmrdsShapefileZipFile data/npmrds/inrix_expanded.zip \
-# 		--outDir data/npmrds/county_geojson
-# 
-# data/ris/county_geojson: init
-# 	@./bin/data_transforming/createRisCountyGeoJSONs \
-# 		--risGeodatabaseZip ./data/ris/RISDuplicate.gdb.zip \
-# 		--outDir data/ris/county_geojson
-# 
-# data/npmrds/county_geojson_partitions: data/npmrds/county_geojson
-# 	@./bin/data_partitioning/partitionCountyGeoJSONsByBoundingBoxes \
-# 		./data/npmrds/county_geojson \
-# 		./data/npmrds/county_geojson_partitions
-# 
-# data/ris/county_geojson_partitions: data/ris/county_geojson
-# 	@./bin/data_partitioning/partitionCountyGeoJSONsByBoundingBoxes \
-# 		./data/ris/county_geojson \
-# 		./data/ris/county_geojson_partitions
-# 
 # data/sharedstreets/shst_matched_npmrds:
 # 	./bin/data_processing/runSharedStreetsMatchOnNPMRDSPartitions \
 # 		data/npmrds/county_geojson_partitions \
