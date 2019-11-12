@@ -1,7 +1,5 @@
 #!/usr/bin/env node
 
-/* eslint no-param-reassign: 0 */
-
 const { exec } = require('child_process');
 const { openSync, appendFileSync, closeSync } = require('fs');
 const { join } = require('path');
@@ -9,15 +7,16 @@ const split = require('split2');
 const { pipe, through } = require('mississippi');
 const yargs = require('yargs');
 const { sync: mkdirpSync } = require('mkdirp');
+const _ = require('lodash');
 
 const cliArgsSpec = {
-  risGeodatabaseZip: {
+  ris_gdb_zip: {
     demand: true,
     type: 'string',
     description:
       'Path to the RIS GeoDatabase. It is REQUIRED that every record has a populated County_Name field.'
   },
-  outDir: {
+  output_dir: {
     demand: true,
     type: 'string',
     description:
@@ -36,21 +35,29 @@ const { argv } = yargs
   .usage(
     `Creates County partitions of the RIS geodatabase.
     One GeoJSON file is created per county.
-    GeoJSON files are written into the specified --outDir directory.
+    GeoJSON files are written into the specified --output_dir directory.
     SRS transformed to CRS84 (ESPG4326).
 
     USAGE:
-      ogr2ogr -f GeoJSON /vsistdout/ -t_srs data/ris/RISDuplicate.gdb |
+      ogr2ogr -f GeoJSON /vsistdout/ -t_srs EPSG:4326 data/ris/RISDuplicate.gdb |
         jq -c '.features[]' |
-        ./partitionRISGeodatabaseIntoCountyGeoJSONs --outDir foo
+        ./partitionRISGeodatabaseIntoCountyGeoJSONs --output_dir foo
     `
   );
 
-const { risGeodatabaseZip, outDir } = argv;
+const { ris_gdb_zip, output_dir } = argv;
 
-mkdirpSync(outDir);
+mkdirpSync(output_dir);
 
-const cmd = `ogr2ogr -f GeoJSON /vsistdout/ /vsizip/${risGeodatabaseZip} -t_srs 'EPSG:4326' -dim 2 -preserve_fid | jq -c '.features[]'`;
+const cmd = `
+  ogr2ogr \
+      -f GeoJSON \
+      /vsistdout/ \
+      /vsizip/${ris_gdb_zip} \
+      -t_srs 'EPSG:4326' \
+      -dim 2 \
+      -preserve_fid |
+    jq -c --stream 'fromstream(inputs | select( [.[0][0]] == ["features"]) | del(.[0][0:2])) | select(.)'`;
 
 const { stdout: risFeatureStream } = exec(cmd, {
   //  Better to crash hard on out of memory than to get cryptic "pipe closed prematurely" error.
@@ -66,27 +73,35 @@ pipe(
   risFeatureStream,
   split(JSON.parse),
   through.obj(
-    function countyPartitioner(feature, _, cb) {
+    function countyPartitioner(raw_feature, $, cb) {
+      const feature = Object.assign({}, raw_feature, {
+        properties: _.mapKeys(raw_feature.properties, (v, k) => k.toLowerCase())
+      });
+
       const {
-        properties: { County_Name }
+        properties: { county_name, gis_id, beg_mp }
       } = feature;
 
-      feature.properties.ogc_fid = feature.id;
-
-      const d = JSON.stringify(feature);
-
-      if (!County_Name) {
+      if (!county_name) {
         throw new Error(
           'ERROR: Empty Column_Name field for RIS Geodatabase entry.'
         );
       }
 
-      const normalizedCountyName = County_Name.toLowerCase().replace(/ /, '_');
+      // eslint-disable-next-line no-param-reassign
+      feature.properties.ogc_fid = `${gis_id}:${beg_mp}`;
+
+      const d = JSON.stringify(feature);
+
+      const normalizedCountyName = county_name
+        .toLowerCase()
+        .replace(/\./g, '')
+        .replace(/ /g, '_');
 
       let fd = countyPartitionFDs[normalizedCountyName];
 
       if (!Number.isFinite(fd)) {
-        const outf = join(outDir, `ris.${normalizedCountyName}.geojson`);
+        const outf = join(output_dir, `ris.${normalizedCountyName}.geojson`);
         fd = openSync(outf, 'w');
 
         countyPartitionFDs[normalizedCountyName] = fd;

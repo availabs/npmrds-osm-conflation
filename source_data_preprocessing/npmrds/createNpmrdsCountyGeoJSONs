@@ -106,7 +106,7 @@ const createCountyGeoJSONs = tmcMetadata => {
           -t_srs EPSG:4326 \
           /vsistdout/ \
           /vsizip/${shpFileName}${subDir} |
-        jq --compact-output '.features[]'
+        jq -c --stream 'fromstream(inputs | select( [.[0][0]] == ["features"]) | del(.[0][0:2])) | select(.)'
       `,
       { cwd, maxBuffer: Infinity }
     );
@@ -117,12 +117,12 @@ const createCountyGeoJSONs = tmcMetadata => {
       featuresStream,
       split(JSON.parse),
       through.obj(
-        function countyPartitioner(feature, $, cb) {
-          // WARNING: DATA MUTATION. Standardize GeoJSON feature property keys.
-          // eslint-disable-next-line no-param-reassign
-          feature.properties = _.mapKeys(feature.properties, (v, k) =>
-            _.lowerCase(k)
-          );
+        function countyPartitioner(raw_feature, $, cb) {
+          const feature = Object.assign({}, raw_feature, {
+            properties: _.mapKeys(raw_feature.properties, (v, k) =>
+              k.toLowerCase()
+            )
+          });
 
           const {
             properties: { county, tmc }

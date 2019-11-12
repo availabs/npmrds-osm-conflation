@@ -2,9 +2,22 @@
 SHELL := /bin/bash
 
 MKFILE_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
-OSM_DATA_DIR=./data/osm
-OSM_PLANET_VERSION=181224
-SHST_TILES_DIR=data/sharedstreets/shst_tiles_pbf
+
+#############
+## The canonical locations of directories and files
+##   that are used across processing tasks are defined here.
+
+
+# NPMRDS
+NPMRDS_DATA_DIR=${MKFILE_DIR}data/npmrds
+
+# RIS
+RIS_DATA_DIR=${MKFILE_DIR}data/ris
+
+# SharedStreets
+SHST_TILES_DIR=${MKFILE_DIR}sharedstreets/shst_tiles_pbf
+
+#############
 
 # https://www.gnu.org/software/make/manual/make.html#Special-Targets
 # The targets which .SECONDARY depends on are treated as intermediate files,
@@ -14,7 +27,10 @@ SHST_TILES_DIR=data/sharedstreets/shst_tiles_pbf
 # 	(i.e., no target is removed because it is considered intermediate).
 .SECONDARY:
 
-node_modules:
+# These are simplified aliases for processing outputs.
+.PHONY: npm_install preprocess_npmrds preprocess_ris
+
+npm_install:
 	@npm install
 
 lib/sharedstreets-builder-0.3.1.jar:
@@ -27,12 +43,27 @@ lib/lev2:
 	tar zxf lib/lev2-3.0.0.tar.gz --directory lib/ && rm -f lib/lev2-3.0.0.tar.gz
 	mv lib/lev2-3.0.0 lib/lev2
 
-init: node_modules lib/sharedstreets-builder-0.3.1.jar
+init: npm_install lib/sharedstreets-builder-0.3.1.jar
+	echo "${NPMRDS_TMC_IDENTIFICATION_FILE_PATH}"
+	echo 
 
-${OSM_DATA_DIR}/new-york-${OSM_PLANET_VERSION}.osm.pbf:
-	@./bin/osm_planet_processing/run extract_nys_from_osm_planet \
+${OSM_NYS_PBF}:
+	@./source_data_preprocessing/osm_planet_processing/run process_nys_osm \
 		--osm_planet_version="${OSM_PLANET_VERSION}" \
-		--osm_data_dir="${OSM_DATA_DIR}"
+		--osm_data_dir="${OSM_DATA_DIR}" \
+		--osm_nys_pbf="${OSM_NYS_PBF}"
+
+osm/nys.osm.pbf: ${OSM_NYS_PBF}
+
+preprocess_npmrds:
+	@./source_data_preprocessing/npmrds/run process_npmrds_metadata \
+      --npmrds_data_dir="${NPMRDS_DATA_DIR}"
+
+preprocess_ris:
+	@./source_data_preprocessing/ris/run process_ris_metadata \
+      --ris_data_dir="${RIS_DATA_DIR}"
+
+npmrds/partitioned_county_geojsons: ${NPMRDS_PARTITIONED_COUNTY_GEOJSONS_DIR}
 	
 # data/npmrds/county_geojson: init
 # 	@./bin/data_transforming/createNpmrdsCountyGeoJSONs \

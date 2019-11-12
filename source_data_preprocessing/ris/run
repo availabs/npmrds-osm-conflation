@@ -11,10 +11,9 @@ const yargs = require('yargs');
 
 const execAsync = promisify(exec);
 
-const TMC_IDENTIFICATION = 'TMC_Identification.csv';
-const NPMRDS_SHAPEFILE_ZIP = 'npmrds_shapefile.zip';
+const RIS_GDB_ZIP = 'ris_gdb.zip';
 
-const COUNTY_PARTITIONER = join(__dirname, './createNpmrdsCountyGeoJSONs');
+const COUNTY_PARTITIONER = join(__dirname, './createRisCountyGeoJSONs');
 const COUNTY_SUBPARTITIONER = join(
   __dirname,
   '../../bin/data_partitioning/partitionCountyGeoJSONsByBoundingBoxes'
@@ -22,22 +21,6 @@ const COUNTY_SUBPARTITIONER = join(
 
 const getAbsPath = path =>
   isAbsolute(path) ? path : join(process.cwd(), path);
-
-const runCountyPartitionScript = yearSubDir =>
-  execAsync(
-    `${COUNTY_PARTITIONER} \
-        --tmc_identification=${join(yearSubDir, TMC_IDENTIFICATION)} \
-        --npmrds_shapefile_zip=${join(yearSubDir, NPMRDS_SHAPEFILE_ZIP)} \
-        --output_dir=${join(yearSubDir, 'county_geojsons')}`
-  );
-
-const runCountySubPartitionScript = yearSubDir =>
-  execAsync(
-    `${COUNTY_SUBPARTITIONER} \
-        ${join(yearSubDir, 'county_geojsons')} \
-        ${join(yearSubDir, 'partitioned_county_geojsons')} \
-    `
-  );
 
 const getYearSubDirs = dir => {
   const yearSubDirs = readdirSync(dir, { withFileTypes: true })
@@ -50,13 +33,11 @@ const getYearSubDirs = dir => {
         .filter(dirent => dirent.isFile())
         .map(({ name }) => name);
 
-      const containsRequiredFiles =
-        subDirFiles.includes(TMC_IDENTIFICATION) &&
-        subDirFiles.includes(NPMRDS_SHAPEFILE_ZIP);
+      const containsRequiredFiles = subDirFiles.includes(RIS_GDB_ZIP);
 
       if (!containsRequiredFiles) {
         console.warn(
-          `WARNING: ${subDirPath} lacks the required files ${TMC_IDENTIFICATION} and ${NPMRDS_SHAPEFILE_ZIP}`
+          `WARNING: ${subDirPath} lacks the required file ${RIS_GDB_ZIP}`
         );
         return false;
       }
@@ -66,39 +47,55 @@ const getYearSubDirs = dir => {
   return yearSubDirs.length ? yearSubDirs : null;
 };
 
+const runCountyPartionScript = yearSubDir =>
+  execAsync(
+    `${COUNTY_PARTITIONER} \
+        --ris_gdb_zip=${join(yearSubDir, RIS_GDB_ZIP)} \
+        --output_dir=${join(yearSubDir, 'county_geojsons')}`
+  );
+
+const runCountySubPartitionScript = yearSubDir =>
+  execAsync(
+    `${COUNTY_SUBPARTITIONER} \
+        ${join(yearSubDir, 'county_geojsons')} \
+        ${join(yearSubDir, 'partitioned_county_geojsons')} \
+    `
+  );
+
 yargs
   .parserConfiguration({
     'camel-case-expansion': false,
     'flatten-duplicate-arrays': false
   })
   .command({
-    command: 'process_npmrds_metadata',
+    command: 'process_ris_metadata',
     desc: '',
     builder: {
-      npmrds_data_dir: {
+      ris_data_dir: {
         type: 'string',
         demand: true,
-        description: 'The directory in which the NPMRDS data files are written.'
+        description:
+          'The directory in which the Road Inventory System data files are written.'
       }
     },
-    async handler({ npmrds_data_dir }) {
+    async handler({ ris_data_dir }) {
       try {
-        const dir = getAbsPath(npmrds_data_dir);
+        const dir = getAbsPath(ris_data_dir);
         const yearSubDirs = getYearSubDirs(dir);
 
         if (!Array.isArray(yearSubDirs)) {
           throw new Error(`ERROR: no valid year subdirectories in ${dir}`);
         }
 
-        const countyPartitioningResults = await Promise.all(
-          yearSubDirs.map(yearSubDir => runCountyPartitionScript(yearSubDir))
+        const results = await Promise.all(
+          yearSubDirs.map(yearSubDir => runCountyPartionScript(yearSubDir))
         );
 
         yearSubDirs.forEach((yearSubDir, i) =>
           console.log(
             JSON.stringify({
               year_sub_dir: yearSubDir,
-              process_output: countyPartitioningResults[i]
+              process_output: results[i]
             })
           )
         );
