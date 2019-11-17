@@ -1,0 +1,17 @@
+#!/bin/bash
+
+set -e
+
+if [ "$#" -ne 1 ]; then
+  (>&2 echo "ERROR: You must specify the path to the RIS Geodatabase as the 1st and only positional CLI argument.")
+  exit 1
+fi
+
+ogr2ogr \
+    -f GeoJSON \
+    /vsistdout/ \
+    /vsizip/"$1" \
+    -t_srs 'EPSG:4326' \
+    -dim 2 \
+    -preserve_fid |
+  jq -c --stream 'fromstream(inputs | select( [.[0][0]] == ["features"]) | del(.[0][0:2])) | select(.)'

@@ -1,0 +1,135 @@
+#!/usr/bin/env node
+
+const { exec, execSync } = require('child_process');
+const { isAbsolute, join, dirname, basename } = require('path');
+const yargs = require('yargs');
+const { pipe, through } = require('mississippi');
+const split = require('split2');
+const _ = require('lodash');
+const csv = require('fast-csv');
+
+const cliArgsSpec = {
+  tmc_identification: {
+    demand: true,
+    type: 'string'
+  },
+  npmrds_shapefile_zip: {
+    demand: true,
+    type: 'string'
+  }
+};
+
+const { argv } = yargs
+  .strict()
+  .parserConfiguration({
+    'camel-case-expansion': false,
+    'flatten-duplicate-arrays': false
+  })
+  .wrap(yargs.terminalWidth() / 1.618)
+  .option(cliArgsSpec);
+
+const { tmc_identification, npmrds_shapefile_zip } = argv;
+
+const getTmcMetadata = () => {
+  const tmcMetadata = {};
+  return new Promise((resolve, reject) =>
+    pipe(
+      csv.parseFile(tmc_identification, { headers: true, trim: true }),
+      through.obj(async function loader(raw, $, cb) {
+        const d = _.mapKeys(raw, (v, k) => k.toLowerCase());
+        const { tmc } = d;
+
+        tmcMetadata[tmc] = d;
+
+        return cb();
+      }),
+      err => {
+        if (err) {
+          return reject(err);
+        }
+
+        return resolve(tmcMetadata);
+      }
+    )
+  );
+};
+
+const streamNDJSON = tmcMetadata => {
+  const shpFileDir = dirname(npmrds_shapefile_zip);
+  const shpFileName = basename(npmrds_shapefile_zip);
+  const cwd = isAbsolute(shpFileDir)
+    ? shpFileDir
+    : join(process.cwd(), shpFileDir);
+
+  // If the shapefile zip has a subdirectory, we need to get it for the ogr2ogr cli args.
+  let subDir;
+
+  try {
+    const zipContents = execSync(`zipinfo -1 ${npmrds_shapefile_zip} "*/"`, {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', null]
+    });
+
+    subDir = `/${_(zipContents.split())
+      .map(s => _.trim(s))
+      .uniq()
+      .sortBy(s => -s.length)
+      .first()}`;
+  } catch (err) {
+    subDir = '';
+  }
+
+  return new Promise((resolve, reject) => {
+    const { stdout: featuresStream, stderr } = exec(
+      ` ogr2ogr \
+          -f GeoJSON \
+          -t_srs EPSG:4326 \
+          /vsistdout/ \
+          /vsizip/${shpFileName}${subDir} |
+        jq -c --stream 'fromstream(inputs | select( [.[0][0]] == ["features"]) | del(.[0][0:2])) | select(.)'
+      `,
+      { cwd, maxBuffer: Infinity }
+    );
+
+    stderr.pipe(process.stderr);
+
+    return pipe(
+      featuresStream,
+      split(JSON.parse),
+      through.obj(function metadata_merger(raw_feature, $, cb) {
+        const feature = Object.assign({}, raw_feature, {
+          properties: _.mapKeys(raw_feature.properties, (v, k) =>
+            k.toLowerCase()
+          )
+        });
+
+        const {
+          properties: { tmc }
+        } = feature;
+
+        // eslint-disable-next-line no-param-reassign
+        feature.id = tmc;
+
+        const metadata = tmcMetadata[tmc];
+        Object.assign(feature.properties, metadata);
+
+        this.push(`${JSON.stringify(feature)}\n`);
+
+        return cb();
+      }),
+      process.stdout,
+      err => {
+        if (err) {
+          return reject(err);
+        }
+
+        return resolve();
+      }
+    );
+  });
+};
+
+(async () => {
+  const tmcMetadata = await getTmcMetadata();
+  await streamNDJSON(tmcMetadata);
+})();

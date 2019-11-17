@@ -1,0 +1,51 @@
+#!/usr/bin/env node
+
+const { spawn } = require('child_process');
+const { isAbsolute, join } = require('path');
+
+const yargs = require('yargs');
+
+const getAbsPath = path =>
+  isAbsolute(path) ? path : join(process.cwd(), path);
+
+const cliArgsSpec = {
+  data_dir: {
+    type: 'string',
+    demand: true,
+    description: 'The directory containing the source data files.'
+  }
+};
+
+const { argv } = yargs
+  .strict()
+  .parserConfiguration({
+    'camel-case-expansion': false,
+    'flatten-duplicate-arrays': false
+  })
+  .wrap(yargs.terminalWidth() / 1.618)
+  .option(cliArgsSpec);
+
+const { data_dir } = argv;
+
+const data_dir_abs = getAbsPath(data_dir);
+
+const runPreprocessor = dataSource =>
+  new Promise((resolve, reject) =>
+    spawn(join(__dirname, dataSource, 'run'), [
+      `--data_dir=${join(data_dir_abs, dataSource)}`
+    ]).once('exit', exit_code => {
+      if (exit_code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`ERROR: ${dataSource} data preprocessor failed`));
+      }
+    })
+  );
+
+(async () => {
+  try {
+    await Promise.all([runPreprocessor('npmrds'), runPreprocessor('ris')]);
+  } catch (err) {
+    console.error(err);
+  }
+})();

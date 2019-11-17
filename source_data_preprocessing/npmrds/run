@@ -2,42 +2,57 @@
 
 /* eslint no-unused-expressions: 0 */
 
-const { readdirSync } = require('fs');
-const { exec } = require('child_process');
-const { promisify } = require('util');
-const { isAbsolute, join } = require('path');
+const { readdirSync, createWriteStream, unlinkSync } = require('fs');
+const { createGzip } = require('zlib');
+const { pipe } = require('mississippi');
+const { spawn } = require('child_process');
+const { isAbsolute, basename, join } = require('path');
 
 const yargs = require('yargs');
-
-const execAsync = promisify(exec);
 
 const TMC_IDENTIFICATION = 'TMC_Identification.csv';
 const NPMRDS_SHAPEFILE_ZIP = 'npmrds_shapefile.zip';
 
-const COUNTY_PARTITIONER = join(__dirname, './createNpmrdsCountyGeoJSONs');
-const COUNTY_SUBPARTITIONER = join(
-  __dirname,
-  '../../bin/data_partitioning/partitionCountyGeoJSONsByBoundingBoxes'
-);
+const METADATA_TO_NDJSON = join(__dirname, './createNpmrdsNDJSON');
 
 const getAbsPath = path =>
   isAbsolute(path) ? path : join(process.cwd(), path);
 
-const runCountyPartitionScript = yearSubDir =>
-  execAsync(
-    `${COUNTY_PARTITIONER} \
-        --tmc_identification=${join(yearSubDir, TMC_IDENTIFICATION)} \
-        --npmrds_shapefile_zip=${join(yearSubDir, NPMRDS_SHAPEFILE_ZIP)} \
-        --output_dir=${join(yearSubDir, 'county_geojsons')}`
-  );
+const getNpmrdsNdjsonFileName = year => `npmrds.${year}.ndjson.gz`;
 
-const runCountySubPartitionScript = yearSubDir =>
-  execAsync(
-    `${COUNTY_SUBPARTITIONER} \
-        ${join(yearSubDir, 'county_geojsons')} \
-        ${join(yearSubDir, 'partitioned_county_geojsons')} \
-    `
-  );
+const createMetadataNDJSON = yearSubDir =>
+  new Promise((resolve, reject) => {
+    const year = basename(yearSubDir);
+    const outFileBaseName = getNpmrdsNdjsonFileName(year);
+
+    const outFilePath = join(yearSubDir, outFileBaseName);
+
+    const outFileStream = createWriteStream(outFilePath, { emitClose: true });
+
+    const subprocess = spawn(`${METADATA_TO_NDJSON}`, [
+      `--tmc_identification=${join(yearSubDir, TMC_IDENTIFICATION)}`,
+      `--npmrds_shapefile_zip=${join(yearSubDir, NPMRDS_SHAPEFILE_ZIP)}`
+    ]);
+
+    pipe(
+      subprocess.stderr,
+      process.stderr
+    );
+
+    pipe(
+      subprocess.stdout,
+      createGzip({ level: 9 }),
+      outFileStream,
+      err => {
+        if (err) {
+          console.error(err);
+          unlinkSync(outFilePath);
+          return reject();
+        }
+        return resolve;
+      }
+    );
+  });
 
 const getYearSubDirs = dir => {
   const yearSubDirs = readdirSync(dir, { withFileTypes: true })
@@ -66,61 +81,38 @@ const getYearSubDirs = dir => {
   return yearSubDirs.length ? yearSubDirs : null;
 };
 
-yargs
+const cliArgsSpec = {
+  data_dir: {
+    type: 'string',
+    demand: true,
+    description: 'The directory in which the NPMRDS data files are written.'
+  }
+};
+
+const { argv } = yargs
+  .strict()
   .parserConfiguration({
     'camel-case-expansion': false,
     'flatten-duplicate-arrays': false
   })
-  .command({
-    command: 'process_npmrds_metadata',
-    desc: '',
-    builder: {
-      npmrds_data_dir: {
-        type: 'string',
-        demand: true,
-        description: 'The directory in which the NPMRDS data files are written.'
-      }
-    },
-    async handler({ npmrds_data_dir }) {
-      try {
-        const dir = getAbsPath(npmrds_data_dir);
-        const yearSubDirs = getYearSubDirs(dir);
+  .wrap(yargs.terminalWidth() / 1.618)
+  .option(cliArgsSpec);
 
-        if (!Array.isArray(yearSubDirs)) {
-          throw new Error(`ERROR: no valid year subdirectories in ${dir}`);
-        }
+const { data_dir } = argv;
 
-        const countyPartitioningResults = await Promise.all(
-          yearSubDirs.map(yearSubDir => runCountyPartitionScript(yearSubDir))
-        );
+(async () => {
+  try {
+    const dir = getAbsPath(data_dir);
+    const yearSubDirs = getYearSubDirs(dir);
 
-        yearSubDirs.forEach((yearSubDir, i) =>
-          console.log(
-            JSON.stringify({
-              year_sub_dir: yearSubDir,
-              process_output: countyPartitioningResults[i]
-            })
-          )
-        );
-
-        const countySubPartitioningResults = await Promise.all(
-          yearSubDirs.map(yearSubDir => runCountySubPartitionScript(yearSubDir))
-        );
-
-        yearSubDirs.forEach((yearSubDir, i) =>
-          console.log(
-            JSON.stringify({
-              year_sub_dir: yearSubDir,
-              process_output: countySubPartitioningResults[i]
-            })
-          )
-        );
-      } catch (err) {
-        console.error(err);
-      }
+    if (!Array.isArray(yearSubDirs)) {
+      throw new Error(`ERROR: no valid year subdirectories in ${dir}`);
     }
-  })
-  .demandCommand()
-  .recommendCommands()
-  .strict()
-  .wrap(yargs.terminalWidth() / 1.618).argv;
+
+    await Promise.all(
+      yearSubDirs.map(yearSubDir => createMetadataNDJSON(yearSubDir))
+    );
+  } catch (err) {
+    console.error(err);
+  }
+})();

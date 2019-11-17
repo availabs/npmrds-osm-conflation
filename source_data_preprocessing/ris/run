@@ -1,23 +1,13 @@
 #!/usr/bin/env node
 
-/* eslint no-unused-expressions: 0 */
-
-const { readdirSync } = require('fs');
-const { exec } = require('child_process');
-const { promisify } = require('util');
+const { readdirSync, createWriteStream } = require('fs');
+const { spawn } = require('child_process');
 const { isAbsolute, join } = require('path');
 
 const yargs = require('yargs');
 
-const execAsync = promisify(exec);
-
 const RIS_GDB_ZIP = 'ris_gdb.zip';
-
-const COUNTY_PARTITIONER = join(__dirname, './createRisCountyGeoJSONs');
-const COUNTY_SUBPARTITIONER = join(
-  __dirname,
-  '../../bin/data_partitioning/partitionCountyGeoJSONsByBoundingBoxes'
-);
+const RIS_NDJSON_GZ = 'ris.ndjson.gz';
 
 const getAbsPath = path =>
   isAbsolute(path) ? path : join(process.cwd(), path);
@@ -47,77 +37,71 @@ const getYearSubDirs = dir => {
   return yearSubDirs.length ? yearSubDirs : null;
 };
 
-const runCountyPartionScript = yearSubDir =>
-  execAsync(
-    `${COUNTY_PARTITIONER} \
-        --ris_gdb_zip=${join(yearSubDir, RIS_GDB_ZIP)} \
-        --output_dir=${join(yearSubDir, 'county_geojsons')}`
-  );
+const writeNDJSONFile = yearSubDir =>
+  new Promise((resolve, reject) => {
+    const source = spawn(`${join(__dirname, './ris_geodatabase_to_ndjson')}`, [
+      `${join(yearSubDir, RIS_GDB_ZIP)}`
+    ]);
 
-const runCountySubPartitionScript = yearSubDir =>
-  execAsync(
-    `${COUNTY_SUBPARTITIONER} \
-        ${join(yearSubDir, 'county_geojsons')} \
-        ${join(yearSubDir, 'partitioned_county_geojsons')} \
-    `
-  );
+    // Compress the NDJSON
+    const sink = spawn('gzip', ['-9']);
 
-yargs
+    const outFileStream = createWriteStream(join(yearSubDir, RIS_NDJSON_GZ));
+
+    source.stdout.pipe(sink.stdin);
+    sink.stdout.pipe(outFileStream);
+
+    source.stderr.pipe(process.stderr);
+    sink.stderr.pipe(process.stderr);
+
+    source.once('exit', exit_code => {
+      if (exit_code !== 0) {
+        reject(new Error('Geodatabase dump to NDJSON failed.'));
+      }
+    });
+
+    sink.once('exit', exit_code => {
+      if (exit_code === 0) {
+        resolve();
+      } else {
+        reject(new Error('Writing compressed NDJSON to file failed.'));
+      }
+    });
+  });
+
+const cliArgsSpec = {
+  data_dir: {
+    type: 'string',
+    demand: true,
+    description:
+      'The directory in which the Road Inventory System data files are written.'
+  }
+};
+
+const { argv } = yargs
+  .strict()
   .parserConfiguration({
     'camel-case-expansion': false,
     'flatten-duplicate-arrays': false
   })
-  .command({
-    command: 'process_ris_metadata',
-    desc: '',
-    builder: {
-      ris_data_dir: {
-        type: 'string',
-        demand: true,
-        description:
-          'The directory in which the Road Inventory System data files are written.'
-      }
-    },
-    async handler({ ris_data_dir }) {
-      try {
-        const dir = getAbsPath(ris_data_dir);
-        const yearSubDirs = getYearSubDirs(dir);
+  .wrap(yargs.terminalWidth() / 1.618)
+  .option(cliArgsSpec);
 
-        if (!Array.isArray(yearSubDirs)) {
-          throw new Error(`ERROR: no valid year subdirectories in ${dir}`);
-        }
+const { data_dir } = argv;
 
-        const results = await Promise.all(
-          yearSubDirs.map(yearSubDir => runCountyPartionScript(yearSubDir))
-        );
+(async () => {
+  try {
+    const dir = getAbsPath(data_dir);
+    const yearSubDirs = getYearSubDirs(dir);
 
-        yearSubDirs.forEach((yearSubDir, i) =>
-          console.log(
-            JSON.stringify({
-              year_sub_dir: yearSubDir,
-              process_output: results[i]
-            })
-          )
-        );
-
-        const countySubPartitioningResults = await Promise.all(
-          yearSubDirs.map(yearSubDir => runCountySubPartitionScript(yearSubDir))
-        );
-
-        yearSubDirs.forEach((yearSubDir, i) =>
-          console.log(
-            JSON.stringify({
-              year_sub_dir: yearSubDir,
-              process_output: countySubPartitioningResults[i]
-            })
-          )
-        );
-      } catch (err) {
-        console.error(err);
-      }
+    if (!Array.isArray(yearSubDirs)) {
+      throw new Error(`ERROR: no valid year subdirectories in ${dir}`);
     }
-  })
-  .demandCommand()
-  .recommendCommands()
-  .strict()
-  .wrap(yargs.terminalWidth() / 1.618).argv;
+
+    await Promise.all(
+      yearSubDirs.map(yearSubDir => writeNDJSONFile(yearSubDir))
+    );
+  } catch (err) {
+    console.error(err);
+  }
+})();
