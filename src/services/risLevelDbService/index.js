@@ -20,11 +20,12 @@ const LEVELDB_DIR = join(__dirname, '../../../data/leveldb/');
 
 const JSON_ENCODING = { valueEncoding: 'json' };
 
-const NPMRDS_LEVELDB_DIR = join(LEVELDB_DIR, 'npmrds');
+const RIS_LEVELDB_DIR = join(LEVELDB_DIR, 'ris');
 
-mkdirSync(NPMRDS_LEVELDB_DIR, { recursive: true });
+mkdirSync(RIS_LEVELDB_DIR, { recursive: true });
 
-const getFeatureId = ({ properties: { tmc } }) => tmc;
+const getFeatureId = ({ properties: { gis_id, beg_mp } }) =>
+  `${gis_id}::${beg_mp}`;
 
 const validateYearParam = year => {
   if (!year) {
@@ -39,7 +40,7 @@ const validateYearParam = year => {
 };
 
 const getDataYearLevelDbDir = year =>
-  validateYearParam(year) && join(NPMRDS_LEVELDB_DIR, `${year}`);
+  validateYearParam(year) && join(RIS_LEVELDB_DIR, `${year}`);
 
 const dbsByYear = {};
 
@@ -75,7 +76,7 @@ const initializeYearDb = async year => {
   const data = sub(yearDb, 'data', JSON_ENCODING);
 
   // This sublevel holds the geoproximity secondary index that is
-  // used to iterate over the npmrds features while preserving
+  // used to iterate over the ris features while preserving
   // the geographic proximity of iteration sequence neighbors.
   const geoProximityIdx = sub(yearDb, 'geoProximityIdx', JSON_ENCODING);
 
@@ -96,9 +97,9 @@ const initializeYearDb = async year => {
   return data;
 };
 
-// Get the year subdirectories of NPMRDS_LEVELDB_DIR
+// Get the year subdirectories of RIS_LEVELDB_DIR
 const allYearDatabasesInitialized = Promise.all(
-  readdirSync(NPMRDS_LEVELDB_DIR, { withFileTypes: true })
+  readdirSync(RIS_LEVELDB_DIR, { withFileTypes: true })
     .filter(dirent => dirent.isDirectory() && /^\d{4}$/.test(dirent.name))
     .map(({ name: year }) => initializeYearDb(year))
 );
@@ -145,9 +146,8 @@ const destroyYearDb = async year => {
 
 const destroy = () => Promise.all(Object.keys(dbsByYear).map(destroyYearDb));
 
-const putFeatures = async ({ year, features, destroyOnError = true }) => {
+const putFeatures = async ({ year, features, destroyOnError }) => {
   validateYearParam(year);
-
   if (!features) {
     return;
   }
@@ -157,6 +157,12 @@ const putFeatures = async ({ year, features, destroyOnError = true }) => {
   const ops = Array.isArray(features)
     ? features.map(makeBatchPutOperation)
     : [makeBatchPutOperation(features)];
+
+  for (let i = 0; i < ops.length; ++i) {
+    if (!ops[i].value) {
+      console.error(JSON.stringify(ops, null, 4));
+    }
+  }
 
   try {
     await yearDb.batch(ops);

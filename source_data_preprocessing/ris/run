@@ -2,15 +2,16 @@
 
 const { readdirSync, createWriteStream } = require('fs');
 const { spawn } = require('child_process');
-const { isAbsolute, join } = require('path');
+const { isAbsolute, join, basename } = require('path');
 
 const yargs = require('yargs');
 
 const RIS_GDB_ZIP = 'ris_gdb.zip';
-const RIS_NDJSON_GZ = 'ris.ndjson.gz';
 
 const getAbsPath = path =>
   isAbsolute(path) ? path : join(process.cwd(), path);
+
+const getRisNdjsonFileName = year => `ris.${year}.ndjson.gz`;
 
 const getYearSubDirs = dir => {
   const yearSubDirs = readdirSync(dir, { withFileTypes: true })
@@ -39,14 +40,19 @@ const getYearSubDirs = dir => {
 
 const writeNDJSONFile = yearSubDir =>
   new Promise((resolve, reject) => {
-    const source = spawn(`${join(__dirname, './ris_geodatabase_to_ndjson')}`, [
-      `${join(yearSubDir, RIS_GDB_ZIP)}`
+    const year = basename(yearSubDir);
+    const outFileBaseName = getRisNdjsonFileName(year);
+
+    const outFilePath = join(yearSubDir, outFileBaseName);
+
+    const outFileStream = createWriteStream(outFilePath, { emitClose: true });
+
+    const source = spawn(`${join(__dirname, './createRisNDJSON')}`, [
+      `--ris_geodatabase_zip=${join(yearSubDir, RIS_GDB_ZIP)}`
     ]);
 
     // Compress the NDJSON
     const sink = spawn('gzip', ['-9']);
-
-    const outFileStream = createWriteStream(join(yearSubDir, RIS_NDJSON_GZ));
 
     source.stdout.pipe(sink.stdin);
     sink.stdout.pipe(outFileStream);

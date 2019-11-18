@@ -1,0 +1,97 @@
+#!/usr/bin/env node
+
+const { exec, execSync } = require('child_process');
+const { isAbsolute, join, dirname, basename } = require('path');
+const yargs = require('yargs');
+const { pipe, through } = require('mississippi');
+const split = require('split2');
+const _ = require('lodash');
+
+const cliArgsSpec = {
+  ris_geodatabase_zip: {
+    demand: true,
+    type: 'string'
+  }
+};
+
+const { argv } = yargs
+  .strict()
+  .parserConfiguration({
+    'camel-case-expansion': false,
+    'flatten-duplicate-arrays': false
+  })
+  .wrap(yargs.terminalWidth() / 1.618)
+  .option(cliArgsSpec);
+
+const { ris_geodatabase_zip } = argv;
+
+const streamNDJSON = () => {
+  const gdbFileDir = dirname(ris_geodatabase_zip);
+  const gdbFileName = basename(ris_geodatabase_zip);
+  const cwd = isAbsolute(gdbFileDir)
+    ? gdbFileDir
+    : join(process.cwd(), gdbFileDir);
+
+  // If the shapefile zip has a subdirectory, we need to get it for the ogr2ogr cli args.
+  let subDir;
+
+  try {
+    const zipContents = execSync(`zipinfo -1 ${ris_geodatabase_zip} "*/"`, {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', null]
+    });
+
+    subDir = `/${_(zipContents.split())
+      .map(s => _.trim(s))
+      .uniq()
+      .sortBy(s => -s.length)
+      .first()}`;
+  } catch (err) {
+    subDir = '';
+  }
+
+  return new Promise((resolve, reject) => {
+    const { stdout: featuresStream, stderr } = exec(
+      ` ogr2ogr \
+          -f GeoJSON \
+          -t_srs EPSG:4326 \
+          /vsistdout/ \
+          /vsizip/${gdbFileName}${subDir} \
+          -dim 2 \
+          -preserve_fid |
+        jq -c --stream 'fromstream(inputs | select( [.[0][0]] == ["features"]) | del(.[0][0:2])) | select(.)'
+      `,
+      { cwd, maxBuffer: Infinity }
+    );
+
+    stderr.pipe(process.stderr);
+
+    return pipe(
+      featuresStream,
+      split(JSON.parse),
+      through.obj(function metadata_merger(raw_feature, $, cb) {
+        const feature = Object.assign({}, raw_feature, {
+          properties: _.mapKeys(raw_feature.properties, (v, k) =>
+            k.toLowerCase()
+          )
+        });
+
+        this.push(`${JSON.stringify(feature)}\n`);
+
+        return cb();
+      }),
+      process.stdout,
+      err => {
+        if (err) {
+          return reject(err);
+        }
+
+        return resolve();
+      }
+    );
+  });
+};
+
+(async () => {
+  await streamNDJSON();
+})();
