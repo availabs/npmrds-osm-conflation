@@ -31,7 +31,7 @@ const MATCHED_PATH = OUTF_PATH.replace(/geojson$/, 'matched.geojson');
 const UNMATCHED_PATH = OUTF_PATH.replace(/geojson$/, 'unmatched.geojson');
 
 const runMatcher = (inFilePath, outFilePath, flags) =>
-  new Promise((resolve, reject) => {
+  new Promise(resolve => {
     const cp = spawn(
       `${SHST_PATH}`,
       _.concat(
@@ -164,11 +164,6 @@ const matchAndLoadBatch = async (year, batch) => {
 };
 
 const runMatcherForYear = async year => {
-  await shstMatchesLevelDbService.destroyDataSourceYearDb(
-    RIS_DATA_SOURCE,
-    year
-  );
-
   const featuresIterator = risLevelDbService.makeGeoProximityFeatureAsyncIterator(
     year,
     { limit: 10000 }
