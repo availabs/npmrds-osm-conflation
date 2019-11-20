@@ -46,7 +46,7 @@ const dbsByYear = {};
 // This function MUST be called for every year database,
 //   even those already existing on disk.
 //   It is REQUIRED to set up runtime behavior.
-const initializeYearDb = async year => {
+const initializeYearDb = year => {
   validateYearParam(year);
 
   // Guarantee idempotency within process
@@ -56,21 +56,7 @@ const initializeYearDb = async year => {
 
   const dir = getDataYearLevelDbDir(year);
 
-  // This is necessary because opening the underlying levelup store is async.
-  //   Without the callback, read and write operations are queued.
-  //   Destroying the store while it is asynchronously opening
-  //     causes a race condition and potentially errors.
-  // See https://github.com/Level/levelup#levelupdb-options-callback
-  const yearDb = await new Promise((resolve, reject) =>
-    levelup(encode(leveldown(dir), JSON_ENCODING), (err, db) => {
-      if (err) {
-        console.error(err);
-        return reject(err);
-      }
-
-      return resolve(db);
-    })
-  );
+  const yearDb = levelup(encode(leveldown(dir), JSON_ENCODING));
 
   const data = sub(yearDb, 'data', JSON_ENCODING);
 
@@ -88,7 +74,7 @@ const initializeYearDb = async year => {
     const prefix = getGeoProximityKeyPrefix(coordinates);
     const id = getFeatureId(feature);
 
-    return `${prefix}::${id}`;
+    return `${prefix}##${id}`;
   });
 
   dbsByYear[year] = data;
@@ -97,21 +83,17 @@ const initializeYearDb = async year => {
 };
 
 // Get the year subdirectories of NPMRDS_LEVELDB_DIR
-const allYearDatabasesInitialized = Promise.all(
-  readdirSync(NPMRDS_LEVELDB_DIR, { withFileTypes: true })
-    .filter(dirent => dirent.isDirectory() && /^\d{4}$/.test(dirent.name))
-    .map(({ name: year }) => initializeYearDb(year))
-);
+readdirSync(NPMRDS_LEVELDB_DIR, { withFileTypes: true })
+  .filter(dirent => dirent.isDirectory() && /^\d{4}$/.test(dirent.name))
+  .map(({ name: year }) => initializeYearDb(year));
 
-const getDataYears = async () =>
-  (await allYearDatabasesInitialized) &&
+const getDataYears = () =>
   Object.keys(dbsByYear)
     .sort()
     .map(_.toInteger);
 
-const getYearDb = async (year, create) => {
+const getYearDb = (year, create) => {
   validateYearParam(year);
-  await allYearDatabasesInitialized;
 
   const yearDb = dbsByYear[year];
 
@@ -132,19 +114,6 @@ const makeBatchPutOperation = feature => ({
   value: feature
 });
 
-const destroyYearDb = async year => {
-  validateYearParam(year);
-  await allYearDatabasesInitialized;
-
-  if (dbsByYear[year]) {
-    delete dbsByYear[year];
-    const dir = getDataYearLevelDbDir(year);
-    rimrafSync(dir);
-  }
-};
-
-const destroy = () => Promise.all(Object.keys(dbsByYear).map(destroyYearDb));
-
 const putFeatures = async ({ year, features, destroyOnError = true }) => {
   validateYearParam(year);
 
@@ -152,7 +121,7 @@ const putFeatures = async ({ year, features, destroyOnError = true }) => {
     return;
   }
 
-  const yearDb = await getYearDb(year, true);
+  const yearDb = getYearDb(year, true);
 
   const ops = Array.isArray(features)
     ? features.map(makeBatchPutOperation)
@@ -163,7 +132,8 @@ const putFeatures = async ({ year, features, destroyOnError = true }) => {
   } catch (err) {
     console.error(err);
     if (destroyOnError) {
-      await destroyYearDb(year);
+      const dir = getDataYearLevelDbDir(year);
+      rimrafSync(dir);
     }
     process.exit(1);
   }
@@ -175,7 +145,7 @@ const putFeature = ({ year, feature }) =>
 async function* makeFeatureAsyncIterator(year, opts) {
   validateYearParam(year);
 
-  const yearDb = await getYearDb(year);
+  const yearDb = getYearDb(year);
 
   for await (const feature of yearDb.createValueStream(opts)) {
     yield feature;
@@ -192,7 +162,7 @@ async function* makeFeatureAsyncIterator(year, opts) {
 async function* makeGeoProximityFeatureAsyncIterator(year, opts) {
   validateYearParam(year);
 
-  const yearDb = await getYearDb(year);
+  const yearDb = getYearDb(year);
 
   for await (const feature of yearDb.byGeoProximityIdx.createValueStream(
     opts
@@ -206,7 +176,5 @@ module.exports = {
   putFeature,
   makeFeatureAsyncIterator,
   makeGeoProximityFeatureAsyncIterator,
-  getDataYears,
-  destroyYearDb,
-  destroy
+  getDataYears
 };

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-/* eslint no-restricted-syntax: 0 */
+/* eslint no-restricted-syntax: 0, no-await-in-loop: 0 */
 
 const { readdirSync, mkdirSync } = require('fs');
 const { dirname, join } = require('path');
@@ -70,6 +70,8 @@ const initializeDataSourceYearDb = (dataSource, year) => {
   db = levelup(encode(leveldown(dir), JSON_ENCODING));
 
   _.set(dbsByDataSourceByYear, [dataSource, year], db);
+  dbsByDataSourceByYear[dataSource] = dbsByDataSourceByYear[dataSource] || {};
+  dbsByDataSourceByYear[dataSource][year] = db;
 
   return db;
 };
@@ -177,11 +179,34 @@ function makeFeatureCollectionByDataSourceYearAsyncIterator() {
   return new StreamMerger(readStreamsByDataSourceYear);
 }
 
+async function* makeAllMatchedFeaturesAsyncIterator() {
+  const dataSources = getDataSources();
+  console.log(dataSources);
+
+  for (let i = 0; i < dataSources.length; ++i) {
+    const dataSource = dataSources[i];
+    console.log(dataSource);
+
+    const years = getYearsForDataSource(dataSource);
+    for (let j = 0; j < years.length; ++j) {
+      const year = years[j];
+
+      const db = dbsByDataSourceByYear[dataSource][year];
+      const featureStream = db.createValueStream();
+
+      for await (const feature of featureStream) {
+        yield feature;
+      }
+    }
+  }
+}
+
 module.exports = {
   putFeatures,
   putFeature,
   makeDataSourceYearFeatureAsyncIterator,
   makeFeatureCollectionByDataSourceYearAsyncIterator,
+  makeAllMatchedFeaturesAsyncIterator,
   getDataSources,
   getYearsForDataSource,
   getDataSourceYearBreakdown

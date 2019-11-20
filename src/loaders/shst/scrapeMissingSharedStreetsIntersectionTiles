@@ -1,0 +1,43 @@
+#!/bin/bash
+
+set -e
+
+usage() {
+  cat <<EOM
+  USAGE:
+      The following two ENV variables are required:
+          SHST_TILESET_DIR
+          SHST_TILES_URL_BASE
+EOM
+}
+
+if [ -z "$SHST_TILESET_DIR" ] || [ -z "$SHST_TILES_URL_BASE" ]; then
+  usage
+  exit 1
+fi
+
+if [ ! -d "$SHST_TILESET_DIR" ]; then
+  echo "ERROR: No sharedstreets_tiles directory."
+  exit 1
+fi
+
+LOCAL_INTERSECTION_FILES="$(
+  find "$SHST_TILESET_DIR" -type f -name '*intersection*' -printf '%f\n' |
+    sort -u
+)"
+
+REQUIRED_INTERSECTION_FILES="$(
+  find "$SHST_TILESET_DIR" -type f -printf '%f\n' |
+    sed 's/reference\|geometry\|metadata/intersection/g' |
+    sort -u
+)"
+
+if INTERSECTION_FILES_TO_SCRAPE="$(
+  grep --invert-match -f <( echo "$LOCAL_INTERSECTION_FILES" | sed '/^$/d' ) <<< "$REQUIRED_INTERSECTION_FILES" 
+)"; then
+  while read -r f; do
+    curl --silent "$SHST_TILES_URL_BASE/$f" > "$SHST_TILESET_DIR/$f"
+    sleep 1
+  done <<< "$INTERSECTION_FILES_TO_SCRAPE"
+fi
+

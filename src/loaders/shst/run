@@ -1,0 +1,37 @@
+#!/usr/bin/env node
+
+const { spawnSync } = require('child_process');
+const { join } = require('path');
+
+const SHST_TILE_HIERARCHY_LEVEL = 8;
+const SHST_TILE_SOURCE = '181224';
+const SHST_TILESET_DIR = join(
+  __dirname,
+  `../../../data/shst/.shst/cache/tiles/osm/planet-${SHST_TILE_SOURCE}/`
+);
+const SHST_TILES_URL_BASE = `https://tiles.sharedstreets.io/osm/planet-${SHST_TILE_SOURCE}`;
+
+Object.assign(process.env, {
+  SHST_TILE_HIERARCHY_LEVEL,
+  SHST_TILE_SOURCE,
+  SHST_TILESET_DIR,
+  SHST_TILES_URL_BASE
+});
+
+// NOTE: scrapeMissingSharedStreetsGeometryFiles MUST be called first.
+// const missingTilesScrapers = [
+// './scrapeMissingSharedStreetsGeometryFiles',
+// './scrapeMissingSharedStreetsIntersectionTiles',
+// './scrapeMissingSharedStreetsMetadataTiles',
+// './scrapeMissingSharedStreetsReferenceTiles'
+// ];
+
+// for (let i = 0; i < missingTilesScrapers.length; ++i) {
+// const scraper = missingTilesScrapers[i];
+
+// spawnSync(join(__dirname, scraper), {
+// stdio: 'inherit'
+// });
+// }
+
+spawnSync(join(__dirname, './loadTilesIntoLevelDb'), { stdio: 'inherit' });

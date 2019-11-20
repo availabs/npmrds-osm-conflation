@@ -92,9 +92,9 @@ const collectMatches = matchedFilePath => {
           coordinates,
           // GeoJSON feature properties. We want only shst metadata and the necessary conflation metadata
           Object.assign({}, _.pickBy(properties, (v, k) => !k.match(/^pp_/)), {
-            data_source_id: `${properties.pp_gis_id}::${properties.pp_beg_mp}`,
-            data_source_primary: properties.isprimary,
-            data_source_net_hrchy: properties.f_system
+            data_source_id: `${properties.pp_gis_id}##${properties.pp_beg_mp}`,
+            data_source_primary: !(properties.Overlap_Hierarchy > 1),
+            data_source_net_hrchy: +properties.Functional_Class % 10
           })
         )
       );

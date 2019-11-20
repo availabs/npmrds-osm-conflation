@@ -15,12 +15,12 @@ const getFeatureId = feature => {
     );
   }
 
-  return `${shstReferenceId}::${gisSegmentIndex}::${data_source_id}`;
+  return `${shstReferenceId}##${gisSegmentIndex}##${data_source_id}`;
 };
 
 const getShStRefIdFeatureId = featureId =>
   _(featureId)
-    .split('::')
+    .split('##')
     .first();
 
 const validateYearParam = year => {

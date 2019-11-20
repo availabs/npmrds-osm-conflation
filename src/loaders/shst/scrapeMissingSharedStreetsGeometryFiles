@@ -1,0 +1,77 @@
+#!/usr/bin/env node
+
+// For each matched feature, make sure we have the
+//   respective geography tile in the cached SharesStreets tileset.
+
+/* eslint no-restricted-syntax: 0, no-continue: 0, no-await-in-loop: 0 */
+// https://github.com/sharedstreets/sharedstreets-ref-system#core-concepts
+
+const { readdirSync, createWriteStream } = require('fs');
+const { join } = require('path');
+const { pipe } = require('mississippi');
+const { uniq } = require('lodash');
+const { conflator } = require('sharedstreets-conflator');
+const request = require('request');
+
+const shstMatchesLevelDbService = require('../../services/shstMatchesLevelDbService');
+
+const {
+  SHST_TILE_HIERARCHY_LEVEL,
+  SHST_TILESET_DIR,
+  SHST_TILES_URL_BASE
+} = process.env;
+
+if (!(SHST_TILE_HIERARCHY_LEVEL && SHST_TILESET_DIR && SHST_TILES_URL_BASE)) {
+  console.error(`
+USAGE:
+    The following ENV variables are required:
+        SHST_TILE_HIERARCHY_LEVEL
+        SHST_TILESET_DIR
+        SHST_TILES_URL_BASE
+`);
+  process.exit(1);
+}
+
+const seenGeomTiles = new Set(
+  readdirSync(SHST_TILESET_DIR).filter(f => f.match(/geometry\.\d+\.pbf$/))
+);
+
+const getTileName = ({ tile: [x, y] }) =>
+  `12-${x}-${y}.geometry.${SHST_TILE_HIERARCHY_LEVEL}.pbf`;
+
+(async () => {
+  const iterator = shstMatchesLevelDbService.makeAllMatchedFeaturesAsyncIterator();
+
+  for await (const feature of iterator) {
+    const tileNames = uniq(
+      [...conflator(feature, { zoom: 12 })].map(getTileName)
+    ).filter(tileName => !seenGeomTiles.has(tileName));
+
+    for (let i = 0; i < tileNames.length; ++i) {
+      const tileName = tileNames[i];
+
+      if (seenGeomTiles.has(tileName)) {
+        console.log('has', tileName);
+        continue;
+      }
+
+      seenGeomTiles.add(tileName);
+
+      console.error('scraping', tileName);
+
+      await new Promise((resolve, reject) =>
+        pipe(
+          request(`${SHST_TILES_URL_BASE}/${tileName}`),
+          createWriteStream(join(SHST_TILESET_DIR, tileName)),
+          err => {
+            if (err) {
+              return reject(err);
+            }
+
+            return resolve();
+          }
+        )
+      );
+    }
+  }
+})();

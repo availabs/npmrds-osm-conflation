@@ -5,7 +5,7 @@ const _ = require('lodash');
 
 const { getShStRefIdFeatureId } = require('./utils');
 
-const getStreamId = (dataSource, year) => `${dataSource}::${year}`;
+const getStreamId = (dataSource, year) => `${dataSource}##${year}`;
 
 class FlowRegulator {
   constructor() {

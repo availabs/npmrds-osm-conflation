@@ -48,10 +48,6 @@ const ignoreAllFilesExceptYearNDJSON = (file, stats) => {
       return acc;
     }, {});
 
-    // Remove the old NPMRDS LevelDb database
-    await levelDbService.destroy();
-    // process.exit();
-
     // Load the NDJSON files concurrently
     await loadGzippedInputFiles({
       levelDbService,

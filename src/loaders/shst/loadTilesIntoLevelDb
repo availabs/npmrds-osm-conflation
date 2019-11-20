@@ -1,0 +1,68 @@
+#!/usr/bin/env node
+
+/* eslint no-await-in-loop: 0 */
+
+// https://github.com/sharedstreets/sharedstreets-ref-system#core-concepts
+
+const assert = require('assert').strict;
+const { readdirSync, readFileSync } = require('fs');
+const { join } = require('path');
+
+const sharedstreetsPbf = require('sharedstreets-pbf');
+
+const levelDbService = require('../../services/shstTilesetLevelDbService');
+
+const putTileMembersFunctions = {
+  geometry: levelDbService.putGeometryTileMembers,
+  intersection: levelDbService.putIntersectionTileMembers,
+  metadata: levelDbService.putMetadataTileMembers,
+  reference: levelDbService.putReferenceTileMembers
+};
+
+const {
+  SHST_TILE_HIERARCHY_LEVEL,
+  SHST_TILESET_DIR,
+  SHST_TILES_URL_BASE
+} = process.env;
+
+if (!(SHST_TILE_HIERARCHY_LEVEL && SHST_TILESET_DIR && SHST_TILES_URL_BASE)) {
+  console.error(`
+USAGE:
+    The following ENV variables are required:
+        SHST_TILE_HIERARCHY_LEVEL
+        SHST_TILESET_DIR
+        SHST_TILES_URL_BASE
+`);
+  process.exit(1);
+}
+
+const tileFiles = readdirSync(SHST_TILESET_DIR, { withFileTypes: true })
+  .filter(
+    dirent =>
+      dirent.isFile() &&
+      new RegExp(`${SHST_TILE_HIERARCHY_LEVEL}.pbf$`).test(dirent.name)
+  )
+  .map(({ name }) => name)
+  .sort();
+
+(async () => {
+  for (let i = 0; i < tileFiles.length; ++i) {
+    const inf = tileFiles[i];
+
+    try {
+      const fileType = inf.match(/reference|intersection|geometry|metadata/);
+
+      const parser = sharedstreetsPbf[fileType];
+
+      const tileMembers = parser(readFileSync(join(SHST_TILESET_DIR, inf)));
+
+      assert(Array.isArray(tileMembers));
+
+      const putFn = putTileMembersFunctions[fileType];
+
+      await putFn({ tileMembers });
+    } catch (err) {
+      console.error(`WARNING: Error processing ${inf}`);
+    }
+  }
+})();

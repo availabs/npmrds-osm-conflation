@@ -25,7 +25,7 @@ const RIS_LEVELDB_DIR = join(LEVELDB_DIR, 'ris');
 mkdirSync(RIS_LEVELDB_DIR, { recursive: true });
 
 const getFeatureId = ({ properties: { gis_id, beg_mp } }) =>
-  `${gis_id}::${beg_mp}`;
+  `${gis_id}##${beg_mp}`;
 
 const validateYearParam = year => {
   if (!year) {
@@ -89,7 +89,7 @@ const initializeYearDb = async year => {
     const prefix = getGeoProximityKeyPrefix(coordinates);
     const id = getFeatureId(feature);
 
-    return `${prefix}::${id}`;
+    return `${prefix}##${id}`;
   });
 
   dbsByYear[year] = data;

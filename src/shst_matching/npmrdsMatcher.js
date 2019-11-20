@@ -161,11 +161,6 @@ const matchAndLoadBatch = async (year, batch) => {
 };
 
 const runMatcherForYear = async year => {
-  await shstMatchesLevelDbService.destroyDataSourceYearDb(
-    NPMRDS_DATA_SOURCE,
-    year
-  );
-
   const featuresIterator = npmrdsLevelDbService.makeGeoProximityFeatureAsyncIterator(
     year,
     { limit: 10000 }
@@ -187,7 +182,7 @@ const runMatcherForYear = async year => {
 
 (async () => {
   try {
-    const years = await npmrdsLevelDbService.getDataYears();
+    const years = npmrdsLevelDbService.getDataYears();
 
     for (let i = 0; i < years.length; ++i) {
       await runMatcherForYear(years[i]);
