@@ -12,15 +12,15 @@ const levelup = require('levelup');
 const leveldown = require('leveldown');
 const encode = require('encoding-down');
 const sub = require('subleveldown');
+const AutoIndex = require('level-auto-index');
+
+const ConflationMapFeaturesAsyncIterator = require('./ConflationMapFeaturesAsyncIterator');
 
 const LEVELDB_DIR = join(__dirname, '../../../data/leveldb/');
 
 const JSON_ENCODING = { valueEncoding: 'json' };
 
-const GEOMETRY = 'geometry';
-const INTERSECTION = 'intersection';
-const METADATA = 'metadata';
-const REFERENCE = 'reference';
+const { GEOMETRY, INTERSECTION, METADATA, REFERENCE } = require('./constants');
 
 const SHST_TILESET_LEVELDB_DIR = join(LEVELDB_DIR, 'shst_tileset');
 const getLevelDbDir = () => SHST_TILESET_LEVELDB_DIR;
@@ -40,11 +40,35 @@ const getReferenceDb = () => dbsByTileType[REFERENCE];
   const db = levelup(encode(leveldown(dir), JSON_ENCODING));
 
   const geometrySubDb = sub(db, 'geometry', JSON_ENCODING);
+
+  const geomDataSubDb = sub(geometrySubDb, 'data', JSON_ENCODING);
+
+  const geomByRefsIdxSubDb = sub(
+    geometrySubDb,
+    'by_references_idx',
+    JSON_ENCODING
+  );
+
+  // set up automatic secondary indexing
+  geomDataSubDb.byReferences = AutoIndex(
+    geomDataSubDb,
+    geomByRefsIdxSubDb,
+    feature => {
+      const {
+        id,
+        properties: { forwardReferenceId, backReferenceId }
+      } = feature;
+
+      return [`${forwardReferenceId}##${id}`, `${backReferenceId}##${id}`];
+    },
+    { multi: true }
+  );
+
   const intersectionSubDb = sub(db, 'intersection', JSON_ENCODING);
   const metadataSubDb = sub(db, 'metadata', JSON_ENCODING);
   const referenceSubDb = sub(db, 'reference', JSON_ENCODING);
 
-  dbsByTileType[GEOMETRY] = geometrySubDb;
+  dbsByTileType[GEOMETRY] = geomDataSubDb;
   dbsByTileType[INTERSECTION] = intersectionSubDb;
   dbsByTileType[METADATA] = metadataSubDb;
   dbsByTileType[REFERENCE] = referenceSubDb;
@@ -319,7 +343,14 @@ async function* makeReferenceTileMembersAsyncIterator(opts) {
   }
 }
 
+const makeShStReferenceFeatureAsyncIterator = () =>
+  new ConflationMapFeaturesAsyncIterator(dbsByTileType);
+
 module.exports = {
+  GEOMETRY,
+  INTERSECTION,
+  METADATA,
+  REFERENCE,
   putGeometryTileMembers,
   makeGeometryTileMembersAsyncIterator,
   putIntersectionTileMembers,
@@ -327,5 +358,6 @@ module.exports = {
   putMetadataTileMembers,
   makeMetadataTileMembersAsyncIterator,
   putReferenceTileMembers,
-  makeReferenceTileMembersAsyncIterator
+  makeReferenceTileMembersAsyncIterator,
+  makeShStReferenceFeatureAsyncIterator
 };
