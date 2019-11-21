@@ -13,6 +13,8 @@ const nysBoundingPolygon = JSON.parse(
 
 const { GEOMETRY, METADATA } = require('./constants');
 
+const selectShStReference = require('./selectShStReference');
+
 // https://github.com/sharedstreets/sharedstreets-types/blob/3c1d5822ff4943ae063f920e018dd3e349213c8c/index.ts#L33-L44
 const shstOsmWayRoadClass = {
   Motorway: 0,
@@ -180,6 +182,8 @@ class ShStReferenceFeaturesAsyncIterator {
 
       let prevShStRefId = null;
 
+      const shstRefCandidates = [];
+
       for await (const geomFeature of shstGeomReadStream) {
         if (!roadInNYS(geomFeature)) {
           continue;
@@ -195,17 +199,26 @@ class ShStReferenceFeaturesAsyncIterator {
           backReferenceId
         });
 
+        if (prevShStRefId !== curShStRefId && shstRefCandidates.length) {
+          const selectedShStRef = selectShStReference(shstRefCandidates);
+          shstRefCandidates.length = 0;
+          yield selectedShStRef;
+        }
+
         const osmMetadata = await getOsmMetadata(dbsByTileType, geomFeature);
 
-        // We need to emit the forward reference for this geometry
-        if (curShStRefId === forwardReferenceId) {
-          yield createForwardReferenceFeature(geomFeature, osmMetadata);
-          prevShStRefId = curShStRefId;
-        } else {
-          // We need to emit the back reference for this geometry
-          yield createBackReferenceFeature(geomFeature, osmMetadata);
-          prevShStRefId = curShStRefId;
-        }
+        const feature =
+          curShStRefId === forwardReferenceId
+            ? createForwardReferenceFeature(geomFeature, osmMetadata)
+            : createBackReferenceFeature(geomFeature, osmMetadata);
+
+        shstRefCandidates.push(feature);
+        prevShStRefId = curShStRefId;
+      }
+
+      if (shstRefCandidates.length) {
+        const selectedShStRef = selectShStReference(shstRefCandidates);
+        yield selectedShStRef;
       }
     };
   }
