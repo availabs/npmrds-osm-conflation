@@ -168,8 +168,6 @@ class AggregatedShstReferenceMatchesAsyncIterator {
     const handleNewDataForSubsequentShstRef = data => {
       // This data event was for a shstRef other than the curShstRef
 
-      --awaitingSSEsCount;
-
       // We should be receiving the shstRefIds in sorted order from each SSE.
       const { shstRefId } = data;
 
@@ -209,9 +207,6 @@ class AggregatedShstReferenceMatchesAsyncIterator {
     const handleSingleSourceEmitterDone = () => {
       // A SSE has signaled that it has no more data.
 
-      // We heard from a SSEs from which we were awaiting an event.
-      --awaitingSSEsCount;
-
       // If that completes this round of awaited events, we can
       //   know that we will not see any more data for the curShstRef,
       //   so we are ready to emit the aggregation
@@ -236,6 +231,7 @@ class AggregatedShstReferenceMatchesAsyncIterator {
     };
 
     const onSSEDataListener = data => {
+      --awaitingSSEsCount;
       if (data.shstRefId === curShstRefId) {
         handleNewDataForCurShStRef(data);
       } else {
@@ -246,6 +242,9 @@ class AggregatedShstReferenceMatchesAsyncIterator {
     function onSSEDoneListener() {
       // NOTE: Within this funtion, this refers to the SingleSourceEmitter
 
+      // We heard from a SSEs from which we were awaiting an event.
+      --awaitingSSEsCount;
+
       // Remove the SSE from the set of active SSEs
       activeSingleSourceEmitters.delete(this);
 
@@ -255,6 +254,21 @@ class AggregatedShstReferenceMatchesAsyncIterator {
       if (activeSingleSourceEmitters.size === 0) {
         // Every SSE has signaled that it is done.
         // There will be no future data events.
+
+        // To get to this point we had to unpause all the SSEs that had any data.
+        //   We know this because of the following INVARIANT:
+        //      we unpause an SSE ONLY after its data is in the aggregated object.
+        //   Every SSE with data in the queue is paused.
+        //   A paused SSE emits no events until it is unpaused.
+        //   If we receive the "done" event for an SSE,
+        //     it has no data in the queue and it will not send any more data.
+        //   Therefore, once all SSEs send their done event we know that the only
+        //     data remaining to emit is the current aggregation object,
+        //     and that aggregation is complete.
+        assert(queue.length === 0);
+
+        assert(awaitingSSEsCount === 0);
+
         emitAggregated();
         emitDone();
       } else {
