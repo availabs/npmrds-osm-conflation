@@ -90,6 +90,7 @@ const getOsmMetadata = async (dbsByTileType, geomFeature) => {
   if (osmMetadata && Array.isArray(osmMetadata.waySections)) {
     const { waySections } = osmMetadata;
 
+    // WARNING: Object mutations
     for (let i = 0; i < waySections.length; ++i) {
       const waySection = waySections[i];
       const { roadClass } = waySection;
@@ -109,6 +110,8 @@ const getOsmMetadata = async (dbsByTileType, geomFeature) => {
   ) {
     console.warn('WARNING: one-way OSM way with two sharedstreets references.');
   }
+
+  return osmMetadata;
 };
 
 const createForwardReferenceFeature = (geomFeature, osmMetadata) => {
@@ -174,11 +177,11 @@ const createBackReferenceFeature = (geomFeature, osmMetadata) => {
 };
 
 class ShStReferenceFeaturesAsyncIterator {
-  constructor(dbsByTileType) {
+  constructor(dbsByTileType, opts) {
     this[Symbol.asyncIterator] = async function* asyncIteratorFn() {
       const shstGeomReadStream = dbsByTileType[
         GEOMETRY
-      ].byReferences.createValueStream();
+      ].byReferences.createValueStream(opts);
 
       let prevShStRefId = null;
 

@@ -69,8 +69,8 @@ const runMotorwaysOnlyMatching = (inFilePath, outFilePath) =>
 const runSurfaceStreetsOnlyMatching = (inFilePath, outFilePath) =>
   runMatcher(inFilePath, outFilePath, '--match-surface-streets-only');
 
-const runAllRoadsMatching = (inFilePath, outFilePath) =>
-  runMatcher(inFilePath, outFilePath);
+// const runAllRoadsMatching = (inFilePath, outFilePath) =>
+// runMatcher(inFilePath, outFilePath);
 
 const collectMatches = matchedFilePath => {
   const matchedFeatures = [];
@@ -138,16 +138,16 @@ const runMatcherForFeaturesBatch = async features => {
     }
   }
 
-  if (existsSync(unmatchedFilePath)) {
-    renameSync(unmatchedFilePath, inFilePath);
+  // if (existsSync(unmatchedFilePath)) {
+  // renameSync(unmatchedFilePath, inFilePath);
 
-    try {
-      await runAllRoadsMatching(inFilePath, outFilePath);
-      matchedFeatures.push(...collectMatches(matchedFilePath));
-    } catch (err) {
-      console.error(err);
-    }
-  }
+  // try {
+  // await runAllRoadsMatching(inFilePath, outFilePath);
+  // matchedFeatures.push(...collectMatches(matchedFilePath));
+  // } catch (err) {
+  // console.error(err);
+  // }
+  // }
 
   removeCallback();
 
@@ -165,8 +165,7 @@ const matchAndLoadBatch = async (year, batch) => {
 
 const runMatcherForYear = async year => {
   const featuresIterator = risLevelDbService.makeGeoProximityFeatureAsyncIterator(
-    year,
-    { limit: 10000 }
+    year
   );
 
   const batch = [];

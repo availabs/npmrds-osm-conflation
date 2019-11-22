@@ -12,10 +12,11 @@ const levelup = require('levelup');
 const leveldown = require('leveldown');
 const encode = require('encoding-down');
 
-const StreamMerger = require('./StreamMerger');
+const AggregatedShstReferenceMatchesAsyncIterator = require('./AggregatedShstReferenceMatchesAsyncIterator');
 
 const {
   getFeatureId,
+  getIteratorQueryForFeatureId,
   validateYearParam,
   validateDataSourceParam
 } = require('./utils');
@@ -69,7 +70,6 @@ const initializeDataSourceYearDb = (dataSource, year) => {
 
   db = levelup(encode(leveldown(dir), JSON_ENCODING));
 
-  _.set(dbsByDataSourceByYear, [dataSource, year], db);
   dbsByDataSourceByYear[dataSource] = dbsByDataSourceByYear[dataSource] || {};
   dbsByDataSourceByYear[dataSource][year] = db;
 
@@ -158,34 +158,35 @@ async function* makeDataSourceYearFeatureAsyncIterator(dataSource, year, opts) {
   }
 }
 
-const getReadStreamsByDataSourceYear = () =>
+const getReadStreamsByDataSourceYear = opts =>
   getDataSources().reduce((acc, dataSource) => {
     const years = getYearsForDataSource(dataSource);
     for (let j = 0; j < years.length; ++j) {
       const year = years[j];
 
       const db = dbsByDataSourceByYear[dataSource][year];
-      const readStream = db.createReadStream();
+      const readStream = db.createReadStream(opts);
 
-      _.set(acc, [dataSource, year], readStream);
+      acc[dataSource] = acc[dataSource] || {};
+      acc[dataSource][year] = readStream;
     }
 
     return acc;
   }, {});
 
-function makeFeatureCollectionByDataSourceYearAsyncIterator() {
-  const readStreamsByDataSourceYear = getReadStreamsByDataSourceYear();
+function makeFeatureCollectionByDataSourceYearAsyncIterator(opts) {
+  const readStreamsByDataSourceYear = getReadStreamsByDataSourceYear(opts);
 
-  return new StreamMerger(readStreamsByDataSourceYear);
+  return new AggregatedShstReferenceMatchesAsyncIterator(
+    readStreamsByDataSourceYear
+  );
 }
 
 async function* makeAllMatchedFeaturesAsyncIterator() {
   const dataSources = getDataSources();
-  console.log(dataSources);
 
   for (let i = 0; i < dataSources.length; ++i) {
     const dataSource = dataSources[i];
-    console.log(dataSource);
 
     const years = getYearsForDataSource(dataSource);
     for (let j = 0; j < years.length; ++j) {
@@ -201,6 +202,23 @@ async function* makeAllMatchedFeaturesAsyncIterator() {
   }
 }
 
+const getMatchesByDataSourceYearForShStReference = async shstReferenceId => {
+  try {
+    const query = getIteratorQueryForFeatureId(shstReferenceId);
+    const iterator = makeFeatureCollectionByDataSourceYearAsyncIterator(query);
+
+    let m;
+    for await (const match of iterator) {
+      m = match;
+    }
+
+    return m;
+  } catch (err) {
+    console.error(err);
+    throw err;
+  }
+};
+
 module.exports = {
   putFeatures,
   putFeature,
@@ -209,5 +227,6 @@ module.exports = {
   makeAllMatchedFeaturesAsyncIterator,
   getDataSources,
   getYearsForDataSource,
-  getDataSourceYearBreakdown
+  getDataSourceYearBreakdown,
+  getMatchesByDataSourceYearForShStReference
 };

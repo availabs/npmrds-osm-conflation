@@ -14,7 +14,7 @@ const encode = require('encoding-down');
 const sub = require('subleveldown');
 const AutoIndex = require('level-auto-index');
 
-const ConflationMapFeaturesAsyncIterator = require('./ConflationMapFeaturesAsyncIterator');
+const ShStReferenceFeatureAsyncIterator = require('./ShStReferenceFeatureAsyncIterator');
 
 const LEVELDB_DIR = join(__dirname, '../../../data/leveldb/');
 
@@ -343,8 +343,8 @@ async function* makeReferenceTileMembersAsyncIterator(opts) {
   }
 }
 
-const makeShStReferenceFeatureAsyncIterator = () =>
-  new ConflationMapFeaturesAsyncIterator(dbsByTileType);
+const makeShStReferenceFeatureAsyncIterator = opts =>
+  new ShStReferenceFeatureAsyncIterator(dbsByTileType, opts);
 
 module.exports = {
   GEOMETRY,

@@ -23,6 +23,11 @@ const getShStRefIdFeatureId = featureId =>
     .split('##')
     .first();
 
+const getIteratorQueryForFeatureId = shstReferenceId => ({
+  gt: shstReferenceId,
+  lt: `${shstReferenceId}~`
+});
+
 const validateYearParam = year => {
   if (_.isNil(year)) {
     throw new Error('year parameter is required.');
@@ -52,6 +57,7 @@ const validateDataSourceParam = dataSource => {
 module.exports = {
   getFeatureId,
   getShStRefIdFeatureId,
+  getIteratorQueryForFeatureId,
   validateYearParam,
   validateDataSourceParam
 };
