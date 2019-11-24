@@ -4,34 +4,28 @@ const _ = require('lodash');
 
 const SingleSourceMatchesEmitter = require('./SingleSourceMatchesEmitter');
 
-const getActiveSingleSourceEmitters = readStreamsByDataSourceYear => {
+const getActiveSingleSourceEmitters = readStreamsByTargetMap => {
   const activeSingleSourceEmitters = new Set();
 
-  const dataSources = Object.keys(readStreamsByDataSourceYear);
-  for (let i = 0; i < dataSources.length; ++i) {
-    const dataSource = dataSources[i];
+  const targetMaps = Object.keys(readStreamsByTargetMap);
+  for (let i = 0; i < targetMaps.length; ++i) {
+    const targetMap = targetMaps[i];
 
-    const years = Object.keys(readStreamsByDataSourceYear[dataSource]);
-    for (let j = 0; j < years.length; ++j) {
-      const year = years[j];
+    const stream = readStreamsByTargetMap[targetMap];
 
-      const stream = readStreamsByDataSourceYear[dataSource][year];
+    const subMachine = new SingleSourceMatchesEmitter({
+      targetMap,
+      stream
+    });
 
-      const subMachine = new SingleSourceMatchesEmitter({
-        dataSource,
-        year,
-        stream
-      });
-
-      activeSingleSourceEmitters.add(subMachine);
-    }
+    activeSingleSourceEmitters.add(subMachine);
   }
 
   return activeSingleSourceEmitters;
 };
 
 class AggregatedShstReferenceMatchesAsyncIterator {
-  constructor(readStreamsByDataSourceYear) {
+  constructor(readStreamsByTargetMap) {
     // Priority queue. Sorted by shstRefId.
     const queue = [];
     let aggregated = {};
@@ -71,7 +65,7 @@ class AggregatedShstReferenceMatchesAsyncIterator {
     };
 
     const activeSingleSourceEmitters = getActiveSingleSourceEmitters(
-      readStreamsByDataSourceYear
+      readStreamsByTargetMap
     );
 
     // If there aren't any data sources, we are done.
@@ -100,14 +94,13 @@ class AggregatedShstReferenceMatchesAsyncIterator {
     };
 
     const addDataToAggregated = data => {
-      const { dataSource, year, shstRefId, matchFeature } = data;
+      const { targetMap, shstRefId, matchFeature } = data;
 
       assert(shstRefId === curShstRefId);
 
       // Add this entry to the aggregated data
-      aggregated[dataSource] = aggregated[dataSource] || {};
-      aggregated[dataSource][year] = aggregated[dataSource][year] || [];
-      aggregated[dataSource][year].push(matchFeature);
+      aggregated[targetMap] = aggregated[targetMap] || [];
+      aggregated[targetMap].push(matchFeature);
     };
 
     // Move queued entries with the curShstRefId to the aggregated.

@@ -9,16 +9,19 @@ async function* makeShStReferenceFeatureWithMatchesAsyncIterator(opts) {
       opts
     );
 
-    for await (const feature of iterator) {
-      const { id } = feature;
+    for await (const shstReferenceFeature of iterator) {
+      const { id } = shstReferenceFeature;
 
-      const shst_matches = await shstMatchesLevelDbService.getMatchesByDataSourceYearForShStReference(
+      const matchesByTargetMapForShStReference = await shstMatchesLevelDbService.getMatchesByTargetMapForShStReference(
         id
       );
 
-      feature.properties.shst_matches = shst_matches || null;
+      const shstMatchesByTargetMap = matchesByTargetMapForShStReference || null;
 
-      yield feature;
+      yield {
+        shstReferenceFeature,
+        shstMatchesByTargetMap
+      };
     }
   } catch (err) {
     console.error(err);

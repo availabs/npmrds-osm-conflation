@@ -17,8 +17,8 @@ const PROJECT_ROOT = join(__dirname, '../../');
 const DATA_DIR = join(PROJECT_ROOT, 'data/shst/');
 const SHST_PATH = join(__dirname, '../../node_modules/.bin/shst');
 
-const RIS_DATA_SOURCE = 'ris';
-const BATCH_SIZE = 1024;
+const RIS = 'ris';
+const BATCH_SIZE = 512;
 const UTF8_ENCODING = 'utf8';
 const SHST_CHILD_PROC_OPTS = {
   cwd: PROJECT_ROOT,
@@ -51,13 +51,14 @@ const runMatcher = (inFilePath, outFilePath, flags) =>
     cp.on('error', err => {
       console.error(err);
     });
-    // cp.on('exit', code =>
-    // code === 0
-    // ? resolve()
-    // : reject(new Error('ERROR: shst match exited with nonzero code.'))
-    // );
 
-    cp.on('exit', resolve);
+    cp.on('exit', code => {
+      if (code !== 0) {
+        console.error(`WARNING: shst match exited with code ${code}.`);
+      }
+
+      resolve();
+    });
 
     cp.stdout.pipe(process.stdout);
     cp.stderr.pipe(process.stderr);
@@ -72,34 +73,12 @@ const runSurfaceStreetsOnlyMatching = (inFilePath, outFilePath) =>
 // const runAllRoadsMatching = (inFilePath, outFilePath) =>
 // runMatcher(inFilePath, outFilePath);
 
-const collectMatches = matchedFilePath => {
-  const matchedFeatures = [];
-
-  const matched = existsSync(matchedFilePath)
+const collectMatchedFeatures = matchedFilePath => {
+  const matchedFeatureCollection = existsSync(matchedFilePath)
     ? JSON.parse(readFileSync(matchedFilePath, UTF8_ENCODING))
     : null;
 
-  const mFeatures =
-    (matched && Array.isArray(matched.features) && matched.features) || [];
-
-  for (let i = 0; i < mFeatures.length; ++i) {
-    const { properties, geometry: { coordinates = null } = {} } = mFeatures[i];
-
-    // TODO: Add data_source_id  and data_source_network_hierarchy properties
-    if (properties && coordinates) {
-      matchedFeatures.push(
-        turfHelpers.lineString(
-          coordinates,
-          // GeoJSON feature properties. We want only shst metadata and the necessary conflation metadata
-          Object.assign({}, _.pickBy(properties, (v, k) => !k.match(/^pp_/)), {
-            data_source_id: `${properties.pp_gis_id}##${properties.pp_beg_mp}`,
-            data_source_primary: !(properties.Overlap_Hierarchy > 1),
-            data_source_net_hrchy: +properties.Functional_Class % 10
-          })
-        )
-      );
-    }
-  }
+  const matchedFeatures = _.get(matchedFeatureCollection, 'features', []);
 
   return matchedFeatures;
 };
@@ -122,7 +101,7 @@ const runMatcherForFeaturesBatch = async features => {
 
   try {
     await runMotorwaysOnlyMatching(inFilePath, outFilePath);
-    matchedFeatures.push(...collectMatches(matchedFilePath));
+    matchedFeatures.push(...collectMatchedFeatures(matchedFilePath));
   } catch (err) {
     console.error(err);
   }
@@ -132,22 +111,11 @@ const runMatcherForFeaturesBatch = async features => {
 
     try {
       await runSurfaceStreetsOnlyMatching(inFilePath, outFilePath);
-      matchedFeatures.push(...collectMatches(matchedFilePath));
+      matchedFeatures.push(...collectMatchedFeatures(matchedFilePath));
     } catch (err) {
       console.error(err);
     }
   }
-
-  // if (existsSync(unmatchedFilePath)) {
-  // renameSync(unmatchedFilePath, inFilePath);
-
-  // try {
-  // await runAllRoadsMatching(inFilePath, outFilePath);
-  // matchedFeatures.push(...collectMatches(matchedFilePath));
-  // } catch (err) {
-  // console.error(err);
-  // }
-  // }
 
   removeCallback();
 
@@ -156,16 +124,31 @@ const runMatcherForFeaturesBatch = async features => {
 
 const matchAndLoadBatch = async (year, batch) => {
   const matchedFeatures = await runMatcherForFeaturesBatch(batch);
-  await shstMatchesLevelDbService.putFeatures({
-    dataSource: RIS_DATA_SOURCE,
-    year,
-    features: matchedFeatures
-  });
+
+  for (let i = 0; i < matchedFeatures.length; ++i) {
+    const matchedFeature = matchedFeatures[i];
+    const { properties } = matchedFeature;
+
+    // OBJECT MUTATION
+    matchedFeature.properties = Object.assign(
+      {},
+      _.omitBy(properties, (v, k) => k.match(/^pp_/)),
+      {
+        targetMap: `${RIS}_${year}`,
+        targetMapId: `${properties.pp_gis_id}##${properties.pp_beg_mp}`,
+        targetMapIsPrimary: !(properties.pp_overlap_hierarchy > 1),
+        targetMapNetHrchyRank: +properties.pp_functional_class % 10
+      }
+    );
+  }
+
+  await shstMatchesLevelDbService.putFeatures(matchedFeatures);
 };
 
 const runMatcherForYear = async year => {
   const featuresIterator = risLevelDbService.makeGeoProximityFeatureAsyncIterator(
     year
+    // { limit: 256 }
   );
 
   const batch = [];

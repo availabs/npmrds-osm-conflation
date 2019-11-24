@@ -5,7 +5,7 @@ const { pipe, through } = require('mississippi');
 const { getShStRefIdFeatureId } = require('../utils');
 
 class SingleSourceMatchesEmitter extends EventEmitter {
-  constructor({ dataSource, year, stream }) {
+  constructor({ targetMap, stream }) {
     super();
 
     const receivedDataFn = ({ key, value: matchFeature }, $, cb) => {
@@ -16,8 +16,7 @@ class SingleSourceMatchesEmitter extends EventEmitter {
       };
 
       this.emit('data', {
-        dataSource,
-        year,
+        targetMap,
         shstRefId,
         matchFeature,
         unpauseSSE

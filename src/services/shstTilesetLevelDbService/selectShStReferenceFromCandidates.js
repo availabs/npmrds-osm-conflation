@@ -5,7 +5,7 @@ const sameIntersections = (a, b) =>
   a.properties.fromIntersectionId === b.properties.fromIntersectionId &&
   a.properties.toIntersectionId === b.properties.toIntersectionId;
 
-const selectShStReference = shstRefCandidates => {
+const selectShStReferenceFromCandidates = shstRefCandidates => {
   let selected = _.head(shstRefCandidates);
   const remainingCandidates = _.tail(shstRefCandidates);
 
@@ -35,4 +35,4 @@ const selectShStReference = shstRefCandidates => {
   return selected;
 };
 
-module.exports = selectShStReference;
+module.exports = selectShStReferenceFromCandidates;

@@ -17,8 +17,7 @@ const AggregatedShstReferenceMatchesAsyncIterator = require('./AggregatedShstRef
 const {
   getFeatureId,
   getIteratorQueryForFeatureId,
-  validateYearParam,
-  validateDataSourceParam
+  validateTargetMapParam
 } = require('./utils');
 
 const LEVELDB_DIR = join(__dirname, '../../../data/leveldb/');
@@ -29,49 +28,34 @@ const SHST_MATCHES_LEVELDB_DIR = join(LEVELDB_DIR, 'shst_matches');
 
 mkdirSync(SHST_MATCHES_LEVELDB_DIR, { recursive: true });
 
-const dbsByDataSourceByYear = {};
+const dbsByTargetMap = {};
 
-const getDataSourceYearLevelDbDir = (dataSource, year) =>
-  validateDataSourceParam(dataSource) &&
-  validateYearParam(year) &&
-  join(SHST_MATCHES_LEVELDB_DIR, dataSource, `${year}`);
+const getTargetMapLevelDbDir = targetMap =>
+  validateTargetMapParam(targetMap) &&
+  join(SHST_MATCHES_LEVELDB_DIR, targetMap);
 
-const getDataSources = () => Object.keys(dbsByDataSourceByYear).sort();
+const getTargetMaps = () => Object.keys(dbsByTargetMap).sort();
 
-const getYearsForDataSource = dataSource =>
-  validateDataSourceParam(dataSource) &&
-  Object.keys(_.get(dbsByDataSourceByYear, [dataSource], []))
-    .sort()
-    .map(_.toInteger);
-
-const getDataSourceYearBreakdown = () =>
-  getDataSources().reduce((acc, dataSource) => {
-    acc[dataSource] = getYearsForDataSource(dataSource);
-    return acc;
-  }, {});
-
-// This function MUST be called for every year database,
+// This function MUST be called for every targetMap database,
 //   even those already existing on disk.
-//   It is REQUIRED to set up runtime behavior.
-const initializeDataSourceYearDb = (dataSource, year) => {
-  validateDataSourceParam(dataSource);
-  validateYearParam(year);
+//   It is REQUIRED to set up secondary indexes' runtime behavior.
+const initializeTargetMapDb = targetMap => {
+  validateTargetMapParam(targetMap);
 
-  let db = _.get(dbsByDataSourceByYear, [dataSource, year], null);
+  let db = _.get(dbsByTargetMap, [targetMap], null);
 
   // Guarantee idempotency within process
   if (db) {
     return db;
   }
 
-  const dir = getDataSourceYearLevelDbDir(dataSource, year);
+  const dir = getTargetMapLevelDbDir(targetMap);
 
   mkdirSync(dirname(dir), { recursive: true });
 
   db = levelup(encode(leveldown(dir), JSON_ENCODING));
 
-  dbsByDataSourceByYear[dataSource] = dbsByDataSourceByYear[dataSource] || {};
-  dbsByDataSourceByYear[dataSource][year] = db;
+  dbsByTargetMap[targetMap] = db;
 
   return db;
 };
@@ -80,37 +64,74 @@ _(readdirSync(SHST_MATCHES_LEVELDB_DIR, { withFileTypes: true }))
   .filter(
     dirent => dirent.isDirectory() && /^[A-Z0-9_]{1,}$/i.test(dirent.name)
   )
-  .map(({ name: dataSource }) => {
-    const dataSourceDir = join(SHST_MATCHES_LEVELDB_DIR, dataSource);
-
-    const dataSourceYears = readdirSync(dataSourceDir, {
-      withFileTypes: true
-    })
-      .filter(dirent => dirent.isDirectory() && /^\d{4}$/.test(dirent.name))
-      .map(({ name: year }) => +year);
-
-    return dataSourceYears.map(year => ({ dataSource, year }));
-  })
-  .flatten()
-  .forEach(({ dataSource, year }) => {
-    initializeDataSourceYearDb(dataSource, year);
+  .map('name')
+  .forEach(targetMap => {
+    initializeTargetMapDb(targetMap);
   });
 
-const getDataSourceYearDb = (dataSource, year, create) => {
-  validateDataSourceParam(dataSource);
-  validateYearParam(year);
+const getTargetMapDb = (targetMap, create) => {
+  validateTargetMapParam(targetMap);
 
-  const yearDb = _.get(dbsByDataSourceByYear, [dataSource, year], null);
+  const db = dbsByTargetMap[targetMap];
 
-  if (yearDb) {
-    return yearDb;
+  if (db) {
+    return db;
   }
 
   if (create) {
-    return initializeDataSourceYearDb(dataSource, year);
+    return initializeTargetMapDb(targetMap);
   }
 
-  throw new Error('ERROR: data year does not exist');
+  throw new Error(`ERROR: ${targetMap} shstMatches database does not exist`);
+};
+
+const getMatchFeatureTargetMap = matchFeature =>
+  _.get(matchFeature, ['properties', 'targetMap']);
+
+const validateMatchFeatures = matchFeatures => {
+  if (!matchFeatures) {
+    throw new Error('ERROR: empty matchFeatures parameter');
+  }
+
+  if (!Array.isArray(matchFeatures)) {
+    throw new Error('ERROR: validateMatchFeatures takes an array of features.');
+  }
+
+  if (matchFeatures.length === 0) {
+    return;
+  }
+
+  const targetMap = getMatchFeatureTargetMap(_.first(matchFeatures));
+
+  if (!targetMap) {
+    console.error(JSON.stringify(matchFeatures, null, 4));
+    throw new Error('ERROR: match features MUST have a targetMap property.');
+  }
+
+  for (let i = 0; i < matchFeatures.length; ++i) {
+    const feature = matchFeatures[i];
+
+    const requiredProperties = [
+      'targetMap',
+      'targetMapId',
+      'targetMapIsPrimary',
+      'targetMapNetHrchyRank'
+    ];
+
+    if (
+      _(feature.properties)
+        .pick(requiredProperties)
+        .some(_.isUndefined)
+    ) {
+      throw new Error(
+        `ERROR: match features must have the following properties defined: ${requiredProperties}`
+      );
+    }
+
+    if (feature.properties.targetMap !== targetMap) {
+      throw new Error('ERROR: Batch puts must be for a single targetMap.');
+    }
+  }
 };
 
 const makeBatchPutOperation = feature => ({
@@ -119,93 +140,82 @@ const makeBatchPutOperation = feature => ({
   value: feature
 });
 
-const putFeatures = async ({
-  dataSource,
-  year,
-  features,
-  destroyOnError = true
-}) => {
-  if (!features) {
+const putFeatures = async (matchFeatures, destroyOnError = true) => {
+  validateMatchFeatures(matchFeatures);
+
+  if (!(matchFeatures && matchFeatures.length)) {
     return;
   }
 
-  const db = getDataSourceYearDb(dataSource, year, true);
+  const matchFeaturesArr = Array.isArray(matchFeatures)
+    ? matchFeatures
+    : [matchFeatures];
 
-  const ops = Array.isArray(features)
-    ? features.map(makeBatchPutOperation)
-    : [makeBatchPutOperation(features)];
+  const ops = matchFeaturesArr.map(makeBatchPutOperation);
+
+  // NOTE: validateMatchFeatures enforces targetMap consistency in
+  const targetMap = getMatchFeatureTargetMap(_.first(matchFeaturesArr));
+  const db = getTargetMapDb(targetMap, true);
 
   try {
     await db.batch(ops);
   } catch (err) {
     console.error(err);
     if (destroyOnError) {
-      const dir = getDataSourceYearLevelDbDir(dataSource, year);
+      const dir = getTargetMapLevelDbDir(targetMap);
       rimrafSync(dir);
     }
     process.exit(1);
   }
 };
 
-const putFeature = ({ dataSource, year, feature }) =>
-  putFeatures({ dataSource, year, features: feature });
+const putFeature = feature => putFeatures(feature);
 
-async function* makeDataSourceYearFeatureAsyncIterator(dataSource, year, opts) {
-  const db = getDataSourceYearDb(dataSource, year);
+async function* makeTargetMapFeatureAsyncIterator(targetMap, opts) {
+  const db = getTargetMapDb(targetMap);
 
   for await (const feature of db.createValueStream(opts)) {
     yield feature;
   }
 }
 
-const getReadStreamsByDataSourceYear = opts =>
-  getDataSources().reduce((acc, dataSource) => {
-    const years = getYearsForDataSource(dataSource);
-    for (let j = 0; j < years.length; ++j) {
-      const year = years[j];
+const getReadStreamsByTargetMap = opts =>
+  getTargetMaps().reduce((acc, targetMap) => {
+    const db = dbsByTargetMap[targetMap];
+    const readStream = db.createReadStream(opts);
 
-      const db = dbsByDataSourceByYear[dataSource][year];
-      const readStream = db.createReadStream(opts);
-
-      acc[dataSource] = acc[dataSource] || {};
-      acc[dataSource][year] = readStream;
-    }
+    acc[targetMap] = readStream;
 
     return acc;
   }, {});
 
-function makeFeatureCollectionByDataSourceYearAsyncIterator(opts) {
-  const readStreamsByDataSourceYear = getReadStreamsByDataSourceYear(opts);
+function makeFeatureCollectionByTargetMapAsyncIterator(opts) {
+  const readStreamsByTargetMap = getReadStreamsByTargetMap(opts);
 
   return new AggregatedShstReferenceMatchesAsyncIterator(
-    readStreamsByDataSourceYear
+    readStreamsByTargetMap
   );
 }
 
 async function* makeAllMatchedFeaturesAsyncIterator() {
-  const dataSources = getDataSources();
+  const targetMaps = getTargetMaps();
 
-  for (let i = 0; i < dataSources.length; ++i) {
-    const dataSource = dataSources[i];
+  for (let i = 0; i < targetMaps.length; ++i) {
+    const targetMap = targetMaps[i];
 
-    const years = getYearsForDataSource(dataSource);
-    for (let j = 0; j < years.length; ++j) {
-      const year = years[j];
+    const db = dbsByTargetMap[targetMap];
+    const featureStream = db.createValueStream();
 
-      const db = dbsByDataSourceByYear[dataSource][year];
-      const featureStream = db.createValueStream();
-
-      for await (const feature of featureStream) {
-        yield feature;
-      }
+    for await (const feature of featureStream) {
+      yield feature;
     }
   }
 }
 
-const getMatchesByDataSourceYearForShStReference = async shstReferenceId => {
+const getMatchesByTargetMapForShStReference = async shstReferenceId => {
   try {
     const query = getIteratorQueryForFeatureId(shstReferenceId);
-    const iterator = makeFeatureCollectionByDataSourceYearAsyncIterator(query);
+    const iterator = makeFeatureCollectionByTargetMapAsyncIterator(query);
 
     let m;
     for await (const match of iterator) {
@@ -222,11 +232,9 @@ const getMatchesByDataSourceYearForShStReference = async shstReferenceId => {
 module.exports = {
   putFeatures,
   putFeature,
-  makeDataSourceYearFeatureAsyncIterator,
-  makeFeatureCollectionByDataSourceYearAsyncIterator,
+  makeTargetMapFeatureAsyncIterator,
+  makeFeatureCollectionByTargetMapAsyncIterator,
   makeAllMatchedFeaturesAsyncIterator,
-  getDataSources,
-  getYearsForDataSource,
-  getDataSourceYearBreakdown,
-  getMatchesByDataSourceYearForShStReference
+  getTargetMaps,
+  getMatchesByTargetMapForShStReference
 };

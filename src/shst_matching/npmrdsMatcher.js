@@ -17,7 +17,9 @@ const PROJECT_ROOT = join(__dirname, '../../');
 const DATA_DIR = join(PROJECT_ROOT, 'data/shst/');
 const SHST_PATH = join(__dirname, '../../node_modules/.bin/shst');
 
-const NPMRDS_DATA_SOURCE = 'npmrds';
+const NPMRDS = 'npmrds';
+const UNDEFINED_FSYSTEM_RANK = 10;
+
 const BATCH_SIZE = 512;
 const UTF8_ENCODING = 'utf8';
 const SHST_CHILD_PROC_OPTS = {
@@ -31,7 +33,7 @@ const MATCHED_PATH = OUTF_PATH.replace(/geojson$/, 'matched.geojson');
 const UNMATCHED_PATH = OUTF_PATH.replace(/geojson$/, 'unmatched.geojson');
 
 const runMatcher = (inFilePath, outFilePath, flags) =>
-  new Promise((resolve, reject) => {
+  new Promise(resolve => {
     const cp = spawn(
       `${SHST_PATH}`,
       _.concat(
@@ -50,11 +52,14 @@ const runMatcher = (inFilePath, outFilePath, flags) =>
     );
 
     cp.on('error', () => {});
-    cp.on('exit', code =>
-      code === 0
-        ? resolve()
-        : reject(new Error('ERROR: shst match exited with nonzero code.'))
-    );
+
+    cp.on('exit', code => {
+      if (code !== 0) {
+        console.error(`WARNING: shst match exited with code ${code}.`);
+      }
+
+      resolve();
+    });
 
     cp.stdout.pipe(process.stdout);
     cp.stderr.pipe(process.stderr);
@@ -66,36 +71,12 @@ const runMotorwaysOnlyMatching = (inFilePath, outFilePath) =>
 const runSurfaceStreetsOnlyMatching = (inFilePath, outFilePath) =>
   runMatcher(inFilePath, outFilePath, '--match-surface-streets-only');
 
-// const runAllRoadsMatching = (inFilePath, outFilePath) =>
-// runMatcher(inFilePath, outFilePath);
-
-const collectMatches = matchedFilePath => {
-  const matchedFeatures = [];
-
-  const matched = existsSync(matchedFilePath)
+const collectMatchedFeatures = matchedFilePath => {
+  const matchedFeatureCollection = existsSync(matchedFilePath)
     ? JSON.parse(readFileSync(matchedFilePath, UTF8_ENCODING))
     : null;
 
-  const mFeatures =
-    (matched && Array.isArray(matched.features) && matched.features) || [];
-
-  for (let i = 0; i < mFeatures.length; ++i) {
-    const { properties, geometry: { coordinates = null } = {} } = mFeatures[i];
-
-    if (properties && coordinates) {
-      matchedFeatures.push(
-        turfHelpers.lineString(
-          coordinates,
-          // GeoJSON feature properties. We want only shst metadata and the necessary conflation metadata
-          Object.assign({}, _.pickBy(properties, (v, k) => !k.match(/^pp_/)), {
-            data_source_id: properties.pp_tmc,
-            data_source_primary: properties.isprimary,
-            data_source_net_hrchy: properties.f_system
-          })
-        )
-      );
-    }
-  }
+  const matchedFeatures = _.get(matchedFeatureCollection, 'features', []);
 
   return matchedFeatures;
 };
@@ -108,7 +89,6 @@ const runMatcherForFeaturesBatch = async features => {
     unsafeCleanup: true
   });
 
-  console.log(workDirName);
   const inFilePath = join(workDirName, INF_PATH);
   const outFilePath = join(workDirName, OUTF_PATH);
 
@@ -119,7 +99,7 @@ const runMatcherForFeaturesBatch = async features => {
 
   try {
     await runMotorwaysOnlyMatching(inFilePath, outFilePath);
-    matchedFeatures.push(...collectMatches(matchedFilePath));
+    matchedFeatures.push(...collectMatchedFeatures(matchedFilePath));
   } catch (err) {
     console.error(err);
   }
@@ -129,22 +109,11 @@ const runMatcherForFeaturesBatch = async features => {
 
     try {
       await runSurfaceStreetsOnlyMatching(inFilePath, outFilePath);
-      matchedFeatures.push(...collectMatches(matchedFilePath));
+      matchedFeatures.push(...collectMatchedFeatures(matchedFilePath));
     } catch (err) {
       console.error(err);
     }
   }
-
-  // if (existsSync(unmatchedFilePath)) {
-  // renameSync(unmatchedFilePath, inFilePath);
-
-  // try {
-  // await runAllRoadsMatching(inFilePath, outFilePath);
-  // matchedFeatures.push(...collectMatches(matchedFilePath));
-  // } catch (err) {
-  // console.error(err);
-  // }
-  // }
 
   removeCallback();
 
@@ -153,17 +122,36 @@ const runMatcherForFeaturesBatch = async features => {
 
 const matchAndLoadBatch = async (year, batch) => {
   const matchedFeatures = await runMatcherForFeaturesBatch(batch);
-  await shstMatchesLevelDbService.putFeatures({
-    dataSource: NPMRDS_DATA_SOURCE,
-    year,
-    features: matchedFeatures
-  });
+
+  const isSomething = v => !(_.isNil(v) || v === '');
+
+  for (let i = 0; i < matchedFeatures.length; ++i) {
+    const matchedFeature = matchedFeatures[i];
+    const { properties } = matchedFeature;
+
+    // OBJECT MUTATION
+    matchedFeature.properties = Object.assign(
+      {},
+      _.omitBy(properties, (v, k) => k.match(/^pp_/)),
+      {
+        targetMap: `${NPMRDS}_${year}`,
+        targetMapId: properties.pp_tmc,
+        targetMapIsPrimary: isSomething(properties.pp_isprimary)
+          ? !!+properties.pp_isprimary
+          : true,
+        targetMapNetHrchyRank: isSomething(properties.pp_f_system)
+          ? +properties.pp_f_system
+          : UNDEFINED_FSYSTEM_RANK
+      }
+    );
+  }
+
+  await shstMatchesLevelDbService.putFeatures(matchedFeatures);
 };
 
 const runMatcherForYear = async year => {
   const featuresIterator = npmrdsLevelDbService.makeGeoProximityFeatureAsyncIterator(
     year
-    // { limit: 1123 }
   );
 
   const batch = [];

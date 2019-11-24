@@ -13,20 +13,7 @@ const nysBoundingPolygon = JSON.parse(
 
 const { GEOMETRY, METADATA } = require('./constants');
 
-const selectShStReference = require('./selectShStReference');
-
-// https://github.com/sharedstreets/sharedstreets-types/blob/3c1d5822ff4943ae063f920e018dd3e349213c8c/index.ts#L33-L44
-const shstOsmWayRoadClass = {
-  Motorway: 0,
-  Trunk: 1,
-  Primary: 2,
-  Secondary: 3,
-  Tertiary: 4,
-  Residential: 5,
-  Unclassified: 6,
-  Service: 7,
-  Other: 8
-};
+const selectShStReferenceFromCandidates = require('./selectShStReferenceFromCandidates');
 
 const roadInNYS = geomFeature =>
   nysBoundingPolygon.geometry.type === 'MultiPolygon'
@@ -35,15 +22,26 @@ const roadInNYS = geomFeature =>
       )
     : turf.booleanWithin(geomFeature, nysBoundingPolygon);
 
-// We receive an instance of each geometry feature for each of its shst references.
-//   We receive the geometries in sorted order by the reference ids.
-//   By keeping track of the last seen shst reference id, we can determine
-//   which of the geometry's references the current geometry instance belongs to.
+// For each of its shst references we receive an instance of the reference's shstGeometry.
+//   ShstReferences are directional. The geometries are not.
+//     Therefore, a particular geometry may occur twice while iterating over
+//     the geometries using a multi-secondary index on the forward and back references.
+//
+//   We therefore need to determine the relevant reference for a geometry instance
+//      is the forward or the back reference.
+//
+//   Because we receive the geometry instances in sorted order by the reference ids,
+//     we can determine whether we are dealing with the forward or back reference's
+//     geometry instance by keeping track of the last seen shst reference id.
+//
+//   See code comments below for the algortithm explanation.
+//
 const getCurrentShStRefId = ({
   prevShStRefId,
   forwardReferenceId,
   backReferenceId
 }) => {
+  // Simple process of elimination
   if (forwardReferenceId && !backReferenceId) {
     return forwardReferenceId;
   }
@@ -52,14 +50,14 @@ const getCurrentShStRefId = ({
     return backReferenceId;
   }
 
+  // First iteration, take the first reference id in the sorted order
   if (prevShStRefId === null) {
-    // First iteration, take the first reference id in the sorted order
     return forwardReferenceId.localeCompare(backReferenceId) <= 0
       ? forwardReferenceId
       : backReferenceId;
   }
 
-  // Because we are passed the SharedStreetsReference IDs in sorted order,
+  // Because we are passed the SharedStreetsReference IDs in sorted order, the
   //   curShStRefId would be the one most immediately following the previous curShStRefId
   return (
     _([forwardReferenceId, backReferenceId])
@@ -87,20 +85,6 @@ const getOsmMetadata = async (dbsByTileType, geomFeature) => {
     // console.warn('WARNING: No metadata found for shstGeometry', geometryId);
   }
 
-  if (osmMetadata && Array.isArray(osmMetadata.waySections)) {
-    const { waySections } = osmMetadata;
-
-    // WARNING: Object mutations
-    for (let i = 0; i < waySections.length; ++i) {
-      const waySection = waySections[i];
-      const { roadClass } = waySection;
-      // TODO: Rename the fsystem property, or make it true FHWA fsystem
-      waySection.fsystem = Number.isFinite(shstOsmWayRoadClass[roadClass])
-        ? shstOsmWayRoadClass[roadClass]
-        : shstOsmWayRoadClass.Other;
-    }
-  }
-
   // TODO: This should be part of logging.
   if (
     osmMetadata &&
@@ -114,6 +98,9 @@ const getOsmMetadata = async (dbsByTileType, geomFeature) => {
   return osmMetadata;
 };
 
+// In the SharedStreets tileset, References are not GeoJSON features.
+//   They are simply metadata objects.
+//   We need to use their respective
 const createForwardReferenceFeature = (geomFeature, osmMetadata) => {
   const {
     properties: {
@@ -203,7 +190,9 @@ class ShStReferenceFeaturesAsyncIterator {
         });
 
         if (prevShStRefId !== curShStRefId && shstRefCandidates.length) {
-          const selectedShStRef = selectShStReference(shstRefCandidates);
+          const selectedShStRef = selectShStReferenceFromCandidates(
+            shstRefCandidates
+          );
           shstRefCandidates.length = 0;
           yield selectedShStRef;
         }
@@ -220,7 +209,9 @@ class ShStReferenceFeaturesAsyncIterator {
       }
 
       if (shstRefCandidates.length) {
-        const selectedShStRef = selectShStReference(shstRefCandidates);
+        const selectedShStRef = selectShStReferenceFromCandidates(
+          shstRefCandidates
+        );
         yield selectedShStRef;
       }
     };
@@ -228,21 +219,3 @@ class ShStReferenceFeaturesAsyncIterator {
 }
 
 module.exports = ShStReferenceFeaturesAsyncIterator;
-
-/*
-console.error(
-  JSON.stringify(
-    _.sortBy(
-      [
-        { k: 'prevShStRefId', v: prevShStRefId },
-        { k: 'curShStRefId', v: curShStRefId },
-        { k: 'forwardReference', v: forwardReferenceId },
-        { k: 'backReferenceId', v: backReferenceId }
-      ],
-      'v'
-    ),
-    null,
-    4
-  )
-);
-*/
