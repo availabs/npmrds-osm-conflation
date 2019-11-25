@@ -1,0 +1,63 @@
+#!/usr/bin/env node
+
+/* eslint no-restricted-syntax: 0, no-continue: 0 */
+
+const _ = require('lodash');
+
+const dao = require('../daos/shstReferencesMatchesDAO');
+const conflationMapService = require('../services/conflationMapLevelDbService');
+
+const getShstReferenceAuxProperties = require('./getShstReferenceAuxProperties');
+const getShstMatchedSegmentOffsetsByTargetMap = require('./getShstMatchedSegmentOffsetsByTargetMap');
+const partitionShstReferenceByTargetMapsMatches = require('./partitionShstReferenceByTargetMapsMatches');
+
+const BATCH_SIZE = 1024;
+
+(async () => {
+  const iterator = dao.makeShStReferenceFeatureWithMatchesAsyncIterator();
+
+  const batch = [];
+
+  for await (const {
+    shstReferenceFeature,
+    shstMatchesByTargetMap
+  } of iterator) {
+    const { id } = shstReferenceFeature;
+
+    // FIXME: We need to output this segment with just the OSM wayIds in this case.
+    if (_.isNil(shstMatchesByTargetMap)) {
+      continue;
+    }
+
+    const shstReferenceAuxProperties = getShstReferenceAuxProperties(
+      shstReferenceFeature
+    );
+
+    const shstMatchedSegmentOffsetsByTargetMap = getShstMatchedSegmentOffsetsByTargetMap(
+      {
+        shstReferenceFeature,
+        shstReferenceAuxProperties,
+        shstMatchesByTargetMap
+      }
+    );
+
+    const shstReferencePartitions = partitionShstReferenceByTargetMapsMatches({
+      shstReferenceFeature,
+      shstReferenceAuxProperties,
+      shstMatchedSegmentOffsetsByTargetMap
+    });
+
+    if (shstReferencePartitions) {
+      batch.push(...shstReferencePartitions.filter(p => p));
+    } else {
+      console.error(`NO MAPPINGS FOR SHST_REF_ID=${id}`);
+    }
+
+    if (batch.length >= BATCH_SIZE) {
+      await conflationMapService.putFeatures(batch);
+      console.log('BATCH WRITE OF', BATCH_SIZE);
+      batch.length = 0;
+    }
+  }
+  await conflationMapService.putFeatures(batch);
+})();

@@ -194,7 +194,13 @@ class ShStReferenceFeaturesAsyncIterator {
             shstRefCandidates
           );
           shstRefCandidates.length = 0;
-          yield selectedShStRef;
+
+          if (selectedShStRef) {
+            yield selectedShStRef;
+          } else {
+            // FIXME: This should never be the case.
+            console.error('ERROR: Could not select shstRef from candidates.');
+          }
         }
 
         const osmMetadata = await getOsmMetadata(dbsByTileType, geomFeature);
@@ -208,11 +214,18 @@ class ShStReferenceFeaturesAsyncIterator {
         prevShStRefId = curShStRefId;
       }
 
+      // Done with the loop. Flush the final shstRef.
       if (shstRefCandidates.length) {
         const selectedShStRef = selectShStReferenceFromCandidates(
           shstRefCandidates
         );
-        yield selectedShStRef;
+
+        if (selectedShStRef) {
+          yield selectedShStRef;
+        } else {
+          // FIXME: This should never be the case.
+          console.error('ERROR: Could not select shstRef from candidates.');
+        }
       }
     };
   }

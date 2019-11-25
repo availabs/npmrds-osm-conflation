@@ -1,7 +1,0 @@
-#!/bin/bash
-
-set -a
-
-. ../../.env
-
-psql -c 'COPY (select json_object_agg(tmc, isprimary) from tmc_identification) TO STDOUT' > tmc_isprimary.json

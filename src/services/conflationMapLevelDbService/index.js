@@ -23,21 +23,25 @@ const db = levelup(
   encode(leveldown(CONFLATION_MAP_LEVELDB_DIR), JSON_ENCODING)
 );
 
+const getKey = ({ id }) => id;
+
 const makeBatchPutOperation = feature => ({
   type: 'put',
-  key: feature.id,
+  key: getKey(feature),
   value: feature
 });
 
-const putFeatures = async ({ features }) => {
+const putFeatures = async features => {
   if (!features) {
-    return;
+    throw Error('features parameter is required');
   }
 
   const ops = Array.isArray(features)
     ? features.map(makeBatchPutOperation)
     : [makeBatchPutOperation(features)];
 
+  console.error(JSON.stringify(features[0], null, 4));
+  // console.error(JSON.stringify(ops, null, 4));
   try {
     await db.batch(ops);
   } catch (err) {

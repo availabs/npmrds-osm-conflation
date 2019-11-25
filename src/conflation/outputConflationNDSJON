@@ -1,0 +1,39 @@
+#!/usr/bin/env node
+
+/* eslint no-restricted-syntax: 0 */
+
+// https://github.com/sharedstreets/sharedstreets-ref-system#core-concepts
+
+const service = require('../services/conflationMapLevelDbService');
+
+let id = 0;
+
+(async () => {
+  const iterator = service.makeFeatureAsyncIterator();
+
+  for await (const feature of iterator) {
+    const {
+      properties: {
+        osm,
+        npmrds_2017,
+        npmrds_2019,
+        ris_2019,
+        segmentIndex,
+        totalSegments
+      }
+    } = feature;
+
+    feature.id = ++id;
+
+    feature.properties = {
+      id,
+      osm,
+      tmc_2017: npmrds_2017,
+      tmc_2019: npmrds_2019,
+      ris_2019: ris_2019 && ris_2019.replace(/##/g, '|'),
+      split_seg: `${segmentIndex}:${totalSegments}`
+    };
+
+    console.log(JSON.stringify(feature));
+  }
+})();

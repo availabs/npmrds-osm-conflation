@@ -1,0 +1,17 @@
+#!/usr/bin/env node
+
+/* eslint no-restricted-syntax: 0 */
+
+// https://github.com/sharedstreets/sharedstreets-ref-system#core-concepts
+
+const dao = require('../../daos/shstReferencesMatchesDAO');
+
+(async () => {
+  const iterator = dao.makeShStReferenceFeatureWithMatchesAsyncIterator();
+
+  for await (const feature of iterator) {
+    if (feature.properties.shst_matches) {
+      console.log(JSON.stringify(feature));
+    }
+  }
+})();

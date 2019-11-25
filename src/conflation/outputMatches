@@ -1,0 +1,28 @@
+#!/usr/bin/env node
+
+/* eslint no-restricted-syntax: 0 */
+
+// https://github.com/sharedstreets/sharedstreets-ref-system#core-concepts
+
+const service = require('../services/shstMatchesLevelDbService');
+
+const query = {
+  gt: '00003eaf4eee55e84e75160225e7f231',
+  lt: '00003eaf4eee55e84e75160225e7f231##~'
+};
+
+(async () => {
+  const readStreamsByTargetMap = service.getReadStreamsByTargetMap(
+    query
+  );
+
+  const targetMaps = Object.keys(readStreamsByTargetMap);
+  // console.log(targetMaps);
+  const [targetMap] = targetMaps;
+
+  const readStream = readStreamsByTargetMap[targetMap]
+
+  for await (const feature of readStream) {
+    console.log(JSON.stringify(feature));
+  }
+})();

@@ -28,7 +28,10 @@ const selectShStReferenceFromCandidates = shstRefCandidates => {
       const a = JSON.stringify(selected, null, 4);
       const b = JSON.stringify(curCandidate, null, 4);
       const msg = `INVARIANT BROKEN: reference refers to different road segments\n${a}\n${b}`;
-      throw new Error(msg);
+
+      // FIXME: throw here
+      console.error(msg);
+      // throw new Error(msg);
     }
   }
 
