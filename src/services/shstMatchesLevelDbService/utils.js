@@ -2,20 +2,26 @@ const _ = require('lodash');
 
 const getFeatureId = feature => {
   const {
-    properties: { shstReferenceId, gisSegmentIndex, targetMapId }
+    properties: {
+      shstReferenceId,
+      targetMapId,
+      shstFromIntersectionId,
+      shstToIntersectionId
+    }
   } = feature;
 
   if (
     _.isNil(shstReferenceId) ||
-    _.isNil(gisSegmentIndex) ||
-    _.isNil(targetMapId)
+    _.isNil(targetMapId) ||
+    _.isNil(shstFromIntersectionId) ||
+    _.isNil(shstToIntersectionId)
   ) {
     throw new Error(
-      'ERROR: shstMatches features MUST have shstReferenceId, gisSegmentIndex, and targetMapId properties.'
+      'ERROR: shstMatches features MUST have shstReferenceId, targetMapId, shstFromIntersectionId, shstToIntersectionId properties.'
     );
   }
 
-  return `${shstReferenceId}##${gisSegmentIndex}##${targetMapId}`;
+  return `${shstReferenceId}##${targetMapId}##${shstFromIntersectionId}##${shstToIntersectionId}`;
 };
 
 const getShStRefIdFeatureId = featureId =>
@@ -24,8 +30,13 @@ const getShStRefIdFeatureId = featureId =>
     .first();
 
 const getIteratorQueryForFeatureId = shstReferenceId => ({
-  gt: shstReferenceId,
-  lt: `${shstReferenceId}~`
+  gt: `${shstReferenceId}`,
+  lt: `${shstReferenceId}##~`
+});
+
+const getIteratorQueryForTargetMapId = targetMapId => ({
+  gt: targetMapId,
+  lt: `${targetMapId}##~`
 });
 
 const validateTargetMapParam = targetMap => {
@@ -44,5 +55,6 @@ module.exports = {
   getFeatureId,
   getShStRefIdFeatureId,
   getIteratorQueryForFeatureId,
+  getIteratorQueryForTargetMapId,
   validateTargetMapParam
 };

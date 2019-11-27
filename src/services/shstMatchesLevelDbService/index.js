@@ -11,12 +11,16 @@ const _ = require('lodash');
 const levelup = require('levelup');
 const leveldown = require('leveldown');
 const encode = require('encoding-down');
+const sub = require('subleveldown');
+const AutoIndex = require('level-auto-index');
 
 const AggregatedShstReferenceMatchesAsyncIterator = require('./AggregatedShstReferenceMatchesAsyncIterator');
+const ShstReferenceChainsForTargetMapMatchesAsyncIterator = require('./ShstReferenceChainsForTargetMapMatchesAsyncIterator');
 
 const {
   getFeatureId,
   getIteratorQueryForFeatureId,
+  getIteratorQueryForTargetMapId,
   validateTargetMapParam
 } = require('./utils');
 
@@ -55,7 +59,29 @@ const initializeTargetMapDb = targetMap => {
 
   db = levelup(encode(leveldown(dir), JSON_ENCODING));
 
-  dbsByTargetMap[targetMap] = db;
+  const targetMapDataSubDb = sub(db, 'data', JSON_ENCODING);
+
+  const byTargetMapIdSubDb = sub(db, 'by_targetmap_id_idx', JSON_ENCODING);
+
+  // set up automatic secondary indexing
+  targetMapDataSubDb.byTargetMapId = AutoIndex(
+    targetMapDataSubDb,
+    byTargetMapIdSubDb,
+    feature => {
+      const {
+        properties: {
+          targetMapId,
+          shstReferenceId,
+          shstFromIntersectionId,
+          shstToIntersectionId
+        }
+      } = feature;
+
+      return `${targetMapId}##${shstReferenceId}##${shstFromIntersectionId}##${shstToIntersectionId}`;
+    }
+  );
+
+  dbsByTargetMap[targetMap] = targetMapDataSubDb;
 
   return db;
 };
@@ -104,7 +130,6 @@ const validateMatchFeatures = matchFeatures => {
   const targetMap = getMatchFeatureTargetMap(_.first(matchFeatures));
 
   if (!targetMap) {
-    console.error(JSON.stringify(matchFeatures, null, 4));
     throw new Error('ERROR: match features MUST have a targetMap property.');
   }
 
@@ -175,6 +200,7 @@ async function* makeTargetMapFeatureAsyncIterator(targetMap, opts) {
   const db = getTargetMapDb(targetMap);
 
   for await (const feature of db.createValueStream(opts)) {
+    console.log(feature.id);
     yield feature;
   }
 }
@@ -212,10 +238,47 @@ async function* makeAllMatchedFeaturesAsyncIterator() {
   }
 }
 
+const makeShstReferenceChainsForTargetMapMatchesAsyncIterator = (
+  targetMap,
+  opts
+) => {
+  const db = dbsByTargetMap[targetMap];
+
+  if (!db) {
+    throw new Error('No matches database for targetMap', targetMap);
+  }
+
+  const valueStream = db.byTargetMapId.createValueStream(opts);
+
+  return new ShstReferenceChainsForTargetMapMatchesAsyncIterator(valueStream);
+};
+
 const getMatchesByTargetMapForShStReference = async shstReferenceId => {
   try {
     const query = getIteratorQueryForFeatureId(shstReferenceId);
+    console.error(JSON.stringify(query, null, 4));
     const iterator = makeFeatureCollectionByTargetMapAsyncIterator(query);
+
+    let m = null;
+    for await (const match of iterator) {
+      console.log('MATCH');
+      m = match;
+    }
+
+    return m;
+  } catch (err) {
+    console.error(err);
+    throw err;
+  }
+};
+
+const getShstReferencesChainForTargetMapId = async (targetMap, targetMapId) => {
+  try {
+    const query = getIteratorQueryForTargetMapId(targetMapId);
+    const iterator = makeShstReferenceChainsForTargetMapMatchesAsyncIterator(
+      targetMap,
+      query
+    );
 
     let m;
     for await (const match of iterator) {
@@ -234,7 +297,10 @@ module.exports = {
   putFeature,
   makeTargetMapFeatureAsyncIterator,
   makeFeatureCollectionByTargetMapAsyncIterator,
+  makeShstReferenceChainsForTargetMapMatchesAsyncIterator,
   makeAllMatchedFeaturesAsyncIterator,
   getTargetMaps,
-  getMatchesByTargetMapForShStReference
+  getMatchesByTargetMapForShStReference,
+  getShstReferencesChainForTargetMapId,
+  dbsByTargetMap
 };

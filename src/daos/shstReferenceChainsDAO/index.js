@@ -3,28 +3,22 @@
 const shstTilesetLevelDbService = require('../../services/shstTilesetLevelDbService');
 const shstMatchesLevelDbService = require('../../services/shstMatchesLevelDbService');
 
-async function* makeShStReferenceFeatureWithMatchesAsyncIterator(opts) {
+async function* makeShStReferenceChainsForMatchesAsyncIterator(
+  targetMapLevelDbService,
+  opts
+) {
   try {
-    const iterator = shstTilesetLevelDbService.makeShStReferenceFeatureAsyncIterator(
-      opts
-    );
+    const iterator = targetMapLevelDbService.makeFeatureAsyncIterator(opts);
 
-    console.log('$$$');
-    for await (const shstReferenceFeature of iterator) {
-      const { id } = shstReferenceFeature;
+    for await (const feature of iterator) {
+      const { id } = feature;
 
-      console.log('vvvvvvvvvvvvvvvvvvvvv');
-      console.log(id);
       const matchesByTargetMapForShStReference = await shstMatchesLevelDbService.getMatchesByTargetMapForShStReference(
         id
       );
 
       const shstMatchesByTargetMap = matchesByTargetMapForShStReference || null;
 
-      if (shstMatchesByTargetMap) {
-        console.error(JSON.stringify(shstMatchesByTargetMap, null, 4));
-      }
-      console.log('^^^^^^^^^^^^^^^^^^^^^');
       yield {
         shstReferenceFeature,
         shstMatchesByTargetMap
@@ -37,5 +31,5 @@ async function* makeShStReferenceFeatureWithMatchesAsyncIterator(opts) {
 }
 
 module.exports = {
-  makeShStReferenceFeatureWithMatchesAsyncIterator
+  makeShStReferenceChainsForMatchesAsyncIterator
 };

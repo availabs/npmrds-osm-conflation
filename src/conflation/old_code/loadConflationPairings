@@ -1,0 +1,707 @@
+#!/usr/bin/env node
+
+/* eslint no-continue: 0, prefer-destructuring: 0, no-labels: 0, no-restricted-syntax: 0, no-param-reassign: 0 */
+const { join } = require('path');
+const { pipe, through } = require('mississippi');
+const _ = require('lodash');
+const { sync: rimrafSync } = require('rimraf');
+const turf = require('@turf/turf');
+const turfHelpers = require('@turf/helpers');
+
+const levelup = require('levelup');
+const leveldown = require('leveldown');
+const encode = require('encoding-down');
+
+const PRECISION = 6;
+const KILOMETERS = {
+  units: 'kilometers'
+};
+const OSM = 'OSM';
+
+const SPLIT_BUFF = 10 / 1000;
+const LENGTH_RATIO_THRESHOLD = 0.5;
+
+const CONFLATION_MAP_DB = join(
+  __dirname,
+  '../../data/leveldb/',
+  'conflationMap/'
+);
+
+const CONFLATION_MAPS_SEGEMENT_OFFSETS_DB = join(
+  __dirname,
+  '../../data/leveldb/',
+  'conflationMapsSegmentOffsets'
+);
+
+const CONFLATION_PAIRINGS_DB = join(
+  __dirname,
+  '../../data/leveldb/',
+  'conflationPairingsDB'
+);
+
+rimrafSync(CONFLATION_PAIRINGS_DB);
+
+const conflationMapDB = levelup(
+  encode(leveldown(CONFLATION_MAP_DB), { valueEncoding: 'json' })
+);
+
+const conflationMapsSegmentsOffsetsDB = levelup(
+  encode(leveldown(CONFLATION_MAPS_SEGEMENT_OFFSETS_DB), {
+    valueEncoding: 'json'
+  })
+);
+
+const conflationPairingsDB = levelup(
+  encode(leveldown(CONFLATION_PAIRINGS_DB), {
+    valueEncoding: 'json'
+  })
+);
+
+pipe(
+  conflationMapDB.createKeyStream(),
+  through.obj(async function loader(shstReferenceId, $, cb) {
+    let shstRefGeom;
+    try {
+      shstRefGeom = await conflationMapDB.get(shstReferenceId);
+    } catch (err) {
+      if (err.type === 'NotFoundError') {
+        console.error(
+          `WARNING: no geometry found in shstGeographyDB for ${shstReferenceId}`
+        );
+        return cb();
+      }
+      throw new Error(err);
+    }
+
+    let targetMapsSegmentOffsets;
+    try {
+      targetMapsSegmentOffsets = await conflationMapsSegmentsOffsetsDB.get(
+        shstReferenceId
+      );
+    } catch (err) {
+      targetMapsSegmentOffsets = [];
+    }
+
+    const shstRefGeomLength = turf.length(shstRefGeom, KILOMETERS);
+
+    const {
+      properties: {
+        osmMetadata: { waySections: osmWaySections }
+      }
+    } = shstRefGeom;
+
+    if (!(Array.isArray(osmWaySections) && osmWaySections.length)) {
+      console.warn(
+        'WARNING: no osmWaySections for shstReference',
+        shstReferenceId
+      );
+    }
+
+    const osmNodeIdsSeq = _(osmWaySections)
+      .map('nodeIds')
+      .flatten()
+      .value()
+      .reduce((acc, nodeId) => {
+        if (nodeId !== _.last(acc)) {
+          acc.push(nodeId);
+        }
+        return acc;
+      }, []);
+
+    const shstRefGeomVerticesSeq = turf
+      .explode(shstRefGeom)
+      .features.reduce((acc, vertex, i) => {
+        if (i === 0 || !_.isEqual(vertex.geometry, _.last(acc).geometry)) {
+          vertex.properties = { osmNodeId: osmNodeIdsSeq[i] };
+          acc.push(vertex);
+        }
+        return acc;
+      }, []);
+
+    // Happens for only two shstRefs (the forward and back refs of a single geom
+    //   because two nodes share the same coords. Punting for now.
+    if (osmNodeIdsSeq.length !== shstRefGeomVerticesSeq.length) {
+      console.error(
+        `INVARIANT BROKEN: osmNodeIdsSeq.length (${osmNodeIdsSeq.length}) !== shstRefGeomVerticesSeq.length: (${shstRefGeomVerticesSeq.length}): for shstRef ${shstReferenceId}`
+      );
+      return cb();
+      // console.error(osmNodeIdsSeq.length, '<>:', shstRefGeomVerticesSeq.length)
+      // console.error(JSON.stringify({
+      // shstRefGeom
+      // },null,4))
+    }
+
+    shstRefGeomVerticesSeq.forEach((vertex, i) => {
+      if (i === 0) {
+        vertex.properties.POFF = 0;
+        vertex.properties.NOFF = shstRefGeomLength;
+      } else if (i === shstRefGeomVerticesSeq.length - 1) {
+        vertex.properties.POFF = shstRefGeomLength;
+        vertex.properties.NOFF = 0;
+      } else {
+        const prev = shstRefGeomVerticesSeq[i - 1];
+        const dist = turf.distance(prev, vertex);
+
+        vertex.properties.POFF = prev.properties.POFF + dist;
+        vertex.properties.NOFF = shstRefGeomLength - vertex.properties.POFF;
+      }
+    });
+
+    // Build up the processed list by
+    //   * snapping to terminal vertices and
+    //   * reusing shstReference geometry vertices where possible
+    //   * removing pairings that do not meet a min shared dist threshold
+    const cleanedSegmentOffsetsByTargetMap = targetMapsSegmentOffsets.reduce(
+      (acc, tmso) => {
+        const { target_map, target_map_id, POFF, NOFF, fsystem } = tmso;
+
+        // Snap the target segment terminal vertices to the source map terminal vertices
+        //   if they are within SPLIT_BUFF distance of the source terminal vertices.
+        let startDist;
+        let endDist;
+
+        if (POFF <= SPLIT_BUFF) {
+          startDist = 0;
+        } else {
+          // See if we can reuse an original OSM/ShSt node rather than inserting a new one.
+          let closestVert = null;
+          let closestDist = Infinity;
+
+          for (let i = 1; i < shstRefGeomVerticesSeq.length; ++i) {
+            const {
+              properties: { POFF: v_poff }
+            } = shstRefGeomVerticesSeq[i];
+
+            const dist = Math.abs(POFF - v_poff);
+
+            if (dist < closestDist) {
+              // tie goes to first
+              closestDist = dist;
+
+              if (dist <= SPLIT_BUFF / 2) {
+                closestVert = i;
+              }
+            } else if (dist > closestDist) {
+              break;
+            }
+          }
+
+          // Distance along shstRefGeom to this target map segment's startpoint
+          startDist =
+            closestVert !== null
+              ? shstRefGeomVerticesSeq[closestVert].properties.POFF
+              : _.round(POFF, PRECISION);
+        }
+
+        // How far along the shstRefGeom is the endpoint of this target map line segment?
+        if (NOFF <= SPLIT_BUFF) {
+          endDist = shstRefGeomLength;
+        } else {
+          // See if we can reuse an original OSM/ShSt node rather than inserting a new one.
+          let closestVert = null;
+          let closestDist = Infinity;
+
+          for (let i = 1; i < shstRefGeomVerticesSeq.length; ++i) {
+            const {
+              properties: { NOFF: v_noff }
+            } = shstRefGeomVerticesSeq[i];
+
+            const dist = Math.abs(NOFF - v_noff);
+
+            if (dist <= closestDist) {
+              // tie goes to last
+              closestDist = dist;
+
+              if (dist <= SPLIT_BUFF / 2) {
+                closestVert = i;
+              }
+            }
+          }
+
+          // Distance along shstRefGeom to this target map segment's endpoint
+          endDist =
+            closestVert !== null
+              ? shstRefGeomVerticesSeq[closestVert].properties.POFF
+              : _.round(shstRefGeomLength - NOFF, PRECISION);
+        }
+
+        const segLen = endDist - startDist;
+
+        if (
+          target_map === OSM ||
+          segLen >= SPLIT_BUFF ||
+          segLen / shstRefGeomLength >= LENGTH_RATIO_THRESHOLD
+        ) {
+          acc[target_map] = acc[target_map] || [];
+
+          acc[target_map].push({
+            target_map,
+            target_map_id,
+            fsystem,
+            startDist,
+            endDist
+          });
+        }
+
+        return acc;
+      },
+      {}
+    );
+
+    // Split the shstRef on OSM Ways as well.
+    if (
+      osmNodeIdsSeq &&
+      osmNodeIdsSeq.length === shstRefGeomVerticesSeq.length
+    ) {
+      // Need to iterate over the osmNodeIdsSeq while
+      //   handling the nodes that connect waySections
+      let vertexIdx = 0;
+
+      cleanedSegmentOffsetsByTargetMap[OSM] = osmWaySections.reduce(
+        (acc, waySection) => {
+          const { wayId, nodeIds, fsystem } = waySection;
+
+          const startNodeId = _.first(nodeIds);
+          const endNodeId = _.last(nodeIds);
+
+          let startVertex;
+          let endVertex;
+
+          while (vertexIdx < shstRefGeomVerticesSeq.length) {
+            const v = shstRefGeomVerticesSeq[vertexIdx++];
+            if (v.properties.osmNodeId === startNodeId) {
+              startVertex = v;
+              break;
+            }
+          }
+
+          if (!startVertex) {
+            console.error(
+              JSON.stringify({ nodeIds, shstRefGeomVerticesSeq }, null, 4)
+            );
+            throw new Error('Could not find osmWaySections startVertex');
+          }
+
+          for (; vertexIdx < shstRefGeomVerticesSeq.length; ++vertexIdx) {
+            const v = shstRefGeomVerticesSeq[vertexIdx];
+            if (v.properties.osmNodeId === endNodeId) {
+              endVertex = v;
+              break;
+            }
+          }
+
+          if (!endVertex) {
+            console.error(
+              JSON.stringify({ nodeIds, shstRefGeomVerticesSeq }, null, 4)
+            );
+            throw new Error('Could not find osmWaySections endVertex');
+          }
+
+          const {
+            properties: { POFF: startDist }
+          } = startVertex;
+          const {
+            properties: { POFF: endDist }
+          } = endVertex;
+
+          acc.push({
+            target_map: OSM,
+            target_map_id: wayId,
+            fsystem,
+            startDist,
+            endDist
+          });
+
+          return acc;
+        },
+        []
+      );
+    } else {
+      console.error(
+        `INVARIANT BROKEN: Number of OSM nodes !== Number of shstGeom Vertices: ${shstReferenceId}`
+      );
+      return cb();
+    }
+
+    // Remove overlapping target map segments
+    // WARNING: Object mutations
+    const nonOverlappingSegmentOffsets = Object.keys(
+      cleanedSegmentOffsetsByTargetMap
+    ).reduce((acc, target_map) => {
+      const networkRankedToAddOffsets = _.uniqBy(
+        _.sortBy(_.cloneDeep(cleanedSegmentOffsetsByTargetMap[target_map]), [
+          'fsytem',
+          'target_map_id'
+        ])
+      );
+
+      const nonOverlapping = [networkRankedToAddOffsets[0]];
+
+      for (
+        let toAddIdx = 1;
+        // NOTE: networkRankedToAddOffsets array length may increase within loop
+        toAddIdx < networkRankedToAddOffsets.length;
+        ++toAddIdx
+      ) {
+        // Because networkRankedToAddOffsets is sorted by rank,
+        //   toAdd will never mutate a member of nonOverlapping.
+        //   However, nonOverlapping elements may mutate toAdd.
+        const toAdd = networkRankedToAddOffsets[toAddIdx];
+
+        // Since we are pushing to the end of the nonOverlapping list from within
+        //   the following loop, we want to stop at the current last element.
+        //   All elements after the current last were added as a result of
+        //   the effects of currently existing nonOverlapping list members on toAdd.
+        const innerLoopStopIdx = nonOverlapping.length;
+
+        for (
+          let alreadyAddedIdx = 0;
+          alreadyAddedIdx < innerLoopStopIdx;
+          ++alreadyAddedIdx
+        ) {
+          const alreadyAdded = nonOverlapping[alreadyAddedIdx];
+
+          // No overlap -> No need to trim toAdd.
+          if (
+            toAdd.startDist >= alreadyAdded.endDist ||
+            toAdd.endDist <= alreadyAdded.startDist
+          ) {
+            continue;
+          }
+
+          if (
+            // toAdd      :    o-----o
+            // alreadyAdded: o-----o
+            toAdd.startDist >= alreadyAdded.startDist &&
+            toAdd.startDist <= alreadyAdded.endDist
+          ) {
+            toAdd.startDist = alreadyAdded.endDist;
+          }
+
+          if (
+            // toAdd      : o-----o
+            // alreadyAdded:    o-----o
+            toAdd.endDist >= alreadyAdded.startDist &&
+            toAdd.endDist <= alreadyAdded.endDist
+          ) {
+            toAdd.endDist = alreadyAdded.startDist;
+          }
+
+          // Split toAdd case
+          if (
+            // toAdd      :  o-------o
+            // alreadyAdded:   o---o
+            toAdd.endDist - toAdd.startDist > 0 &&
+            toAdd.startDist <= alreadyAdded.startDist &&
+            toAdd.endDist >= alreadyAdded.endDist
+          ) {
+            // make a clone of toAdd
+            const toAddClone = _.cloneDeep(toAdd);
+
+            toAdd.endDist = alreadyAdded.startDist;
+            toAddClone.startDist = alreadyAdded.endDist;
+
+            // Change arithmetic based to simpler inequality
+            if (toAddClone.endDist - toAddClone.startDist > 0) {
+              networkRankedToAddOffsets.splice(toAddIdx + 1, 0, toAddClone);
+            }
+          }
+
+          if (
+            // toAdd      :   o---o
+            // alreadyAdded: o-------o
+            toAdd.startDist >= alreadyAdded.startDist &&
+            toAdd.endDist <= alreadyAdded.endDist
+          ) {
+            toAdd.startDist = 0;
+            toAdd.endDist = 0;
+          }
+        } // end innner loop.
+
+        const toAddLen = toAdd.endDist - toAdd.startDist;
+        if ((target_map === OSM && toAddLen > 0) || toAddLen >= SPLIT_BUFF) {
+          nonOverlapping.push(toAdd);
+        }
+      }
+
+      // remove the nulled out segments
+      acc[target_map] = nonOverlapping.filter(s => s);
+
+      return acc;
+    }, {});
+
+    const processedOffsetsList = _.flatten(
+      _.values(nonOverlappingSegmentOffsets)
+    );
+
+    if (!processedOffsetsList.length) {
+      return cb();
+    }
+
+    const splitterOffsets = _(
+      Array.prototype.concat(
+        [0, shstRefGeomLength],
+        processedOffsetsList.map(({ startDist, endDist }) => [
+          startDist,
+          endDist
+        ])
+      )
+    )
+      .flatten()
+      .filter(v => v !== null)
+      .sortBy(_.toNumber)
+      .sortedUniq()
+      .value();
+
+    const splitGeomVertices = _.cloneDeep(shstRefGeomVerticesSeq);
+    const segmentLineStrings = [];
+    const baseSegmentProperties = _.pick(shstRefGeom.properties, [
+      'geometryId',
+      'referenceId',
+      'fromIntersectionId',
+      'toIntersectionId',
+      'reversed',
+      'state'
+    ]);
+
+    for (let i = 1; i < splitterOffsets.length; ++i) {
+      const startDist = splitterOffsets[i - 1];
+      const endDist = splitterOffsets[i];
+
+      // NOTE: for the first segment, startDistance is zero,
+      //       which is guaranteed to have an OSM Node and ShStRefGeom vertex.
+      //       Only need to concern ourselves with creating endDist nodes/vertices.
+      let endVertex = splitGeomVertices.find(
+        ({ properties: { POFF } }) => POFF === endDist
+      );
+
+      // Wasn't able to reuse an existing node/vertex. Need to create one.
+      if (!endVertex) {
+        endVertex = turf.along(shstRefGeom, endDist, KILOMETERS);
+
+        // Indicates a synthetic splitter node. Not in original geom.
+        endVertex.properties.osmNodeId = null;
+        endVertex.properties.POFF = endDist;
+        endVertex.properties.NOFF = shstRefGeomLength - endDist;
+
+        const insertIdx = splitGeomVertices.findIndex(
+          ({ properties: { POFF } }) => POFF > endDist
+        );
+
+        // NOTE: because splitter offsets is an ordered set,
+        //   the next segment will reuse this new vertex as the startVertex
+        splitGeomVertices.splice(insertIdx, 0, endVertex);
+      }
+
+      const nodeIds = [];
+      const segmentCoordinates = [];
+
+      for (let j = 0; j < splitGeomVertices.length; ++j) {
+        const v = splitGeomVertices[j];
+        const {
+          properties: { osmNodeId, POFF },
+          geometry: { coordinates: vertexCoordinates }
+        } = v;
+
+        if (POFF < startDist) {
+          continue;
+        }
+
+        if (POFF > endDist) {
+          break;
+        }
+
+        nodeIds.push(osmNodeId);
+        segmentCoordinates.push(vertexCoordinates);
+      }
+
+      const segmentProperties = Object.assign({}, baseSegmentProperties, {
+        osmMetadata: {
+          // NOTE: Rest of waySection metadata filled in when OSM WayId assigned to the segment.
+          waySection: {
+            nodeIds
+          }
+        },
+        totalSegments: splitterOffsets.length - 1,
+        segmentIndex: i,
+        startDist,
+        endDist
+      });
+
+      const segment = turfHelpers.lineString(
+        segmentCoordinates,
+        segmentProperties
+      );
+
+      segmentLineStrings.push(segment);
+    }
+
+    // Map targetMap IDs to the sourceMap segments
+    for (let i = 0; i < processedOffsetsList.length; ++i) {
+      const {
+        startDist: tmsStartDist,
+        endDist: tmsEndDist,
+        target_map,
+        target_map_id
+      } = processedOffsetsList[i];
+
+      for (let j = 0; j < segmentLineStrings.length; ++j) {
+        const segment = segmentLineStrings[j];
+        const {
+          properties: { startDist, endDist }
+        } = segment;
+
+        // If targetMapSeg overlaps sourceMapSeg, assign the targetMapId
+        //   to the segment's respective targetMap property.
+        if (
+          // segment.properties[target_map] !== target_map_id &&
+          // targetMapSeg begins before or at sourceMapSeg beginning
+          tmsStartDist <= startDist &&
+          // targetMapSeg begins before sourceMapSeg ending
+          tmsStartDist < endDist &&
+          // targetMapSeg ends after sourceMapSeg begins
+          tmsEndDist > startDist
+        ) {
+          if (segment.properties[target_map]) {
+            throw new Error(
+              'INVARIANT BROKEN. More than one target_map segment per source map segment.'
+            );
+          }
+          segment.properties[target_map] = target_map_id;
+        }
+      }
+    }
+
+    // add osmMetadata properties
+    const osmWaySectionsByWayIds = osmWaySections.reduce((acc, waySection) => {
+      const { wayId } = waySection;
+      acc[wayId] = waySection;
+      return acc;
+    }, {});
+
+    for (let i = 0; i < segmentLineStrings.length; ++i) {
+      const segment = segmentLineStrings[i];
+      const {
+        properties: { OSM: wayId = null }
+      } = segment;
+
+      if (wayId === null) {
+        console.error(
+          JSON.stringify(
+            {
+              // segmentLineStrings,
+              osmWaySections,
+              cleanedSegmentOffsetsByTargetMap,
+              nonOverlappingSegmentOffsets,
+              shstRefGeomLength,
+              shstReferenceId
+            },
+            null,
+            4
+          )
+        );
+
+        throw new Error(
+          'INVARIANT BROKEN: shstRef segment without a mapped OSM WayID'
+        );
+      }
+
+      const waySection = osmWaySectionsByWayIds[wayId];
+
+      Object.assign(
+        segment.properties.osmMetadata,
+        _.omit(waySection, 'nodeIds')
+      );
+    }
+
+    // Validate the osmMetadata nodeIds.
+    //   Downsteam processing depends on their connectedness and completeness.
+    const outputNodeIdChains = _(segmentLineStrings)
+      .sortBy(['segmentIndex'])
+      .map('properties.osmMetadata.waySection.nodeIds')
+      .value();
+
+    // INVARIANT: Chains are connected
+    if (outputNodeIdChains.length > 1) {
+      for (let i = 1; i < outputNodeIdChains.length; ++i) {
+        const prev = outputNodeIdChains[i - 1];
+        const cur = outputNodeIdChains[i];
+
+        if (_.last(prev) !== _.first(cur)) {
+          throw new Error(
+            'ERROR: INVARIANT BROKEN. Split segments nodeId chains are not connected.'
+          );
+        }
+      }
+    }
+
+    const outputNodeIdsSeq = _.flatten(outputNodeIdChains).reduce(
+      (acc, nodeId) => {
+        if (nodeId !== null && nodeId !== _.last(acc)) {
+          acc.push(nodeId);
+        }
+        return acc;
+      },
+      []
+    );
+
+    if (!_.isEqual(osmNodeIdsSeq, outputNodeIdsSeq)) {
+      console.error('*'.repeat(40));
+      console.error(
+        JSON.stringify(
+          {
+            'in-out': _.difference(osmNodeIdsSeq, outputNodeIdsSeq),
+            'out-in': _.difference(outputNodeIdsSeq, osmNodeIdsSeq)
+          },
+          null,
+          4
+        )
+      );
+      console.error(osmNodeIdsSeq.length, outputNodeIdsSeq.length);
+      console.error(
+        JSON.stringify(
+          { inputNodeIdsSeq: osmNodeIdsSeq, outputNodeIdsSeq },
+          null,
+          4
+        )
+      );
+      throw new Error(
+        'ERROR: INVARIANT BROKEN. Output osmNodeIdsSeq !== Input osmNodeIdsSeq.'
+      );
+    }
+
+    const batchPut = segmentLineStrings.map(segment => ({
+      type: 'put',
+      key: `${shstReferenceId}${
+        // If the source map segment was split, append the segmentIndex to the id.
+        segment.properties.totalSegments > 1
+          ? `.${segment.properties.segmentIndex}`
+          : ''
+      }`,
+      value: segment
+    }));
+
+    try {
+      await conflationPairingsDB.batch(batchPut);
+    } catch (err) {
+      console.error('ERROR in batch put');
+      throw err;
+    }
+
+    return cb();
+  }),
+  err => {
+    if (err && err.code !== 'EPIPE') {
+      console.error(
+        'ERROR encountered while loading targetMapsSegmentOffsets DB.'
+      );
+      console.error(
+        `    Deleting the corruped database at ${CONFLATION_PAIRINGS_DB}`
+      );
+      console.error();
+      console.error(err);
+      rimrafSync(CONFLATION_PAIRINGS_DB);
+      process.exit(1);
+    }
+  }
+);

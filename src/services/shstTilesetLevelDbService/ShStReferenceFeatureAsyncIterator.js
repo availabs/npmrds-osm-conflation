@@ -58,7 +58,7 @@ const getCurrentShStRefId = ({
   }
 
   // Because we are passed the SharedStreetsReference IDs in sorted order, the
-  //   curShStRefId would be the one most immediately following the previous curShStRefId
+  //   curShstRefId would be the one most immediately following the previous curShstRefId
   return (
     _([forwardReferenceId, backReferenceId])
       // Only interested in ids following the previous id in the sorted order
@@ -175,21 +175,23 @@ class ShStReferenceFeaturesAsyncIterator {
       const shstRefCandidates = [];
 
       for await (const geomFeature of shstGeomReadStream) {
-        if (!roadInNYS(geomFeature)) {
-          continue;
-        }
+        // FIXME: ???How did this break???
+        // if (!roadInNYS(geomFeature)) {
+        // console.error(JSON.stringify(geomFeature.geometry.coordinates));
+        // continue;
+        // }
 
         const {
           properties: { forwardReferenceId, backReferenceId }
         } = geomFeature;
 
-        const curShStRefId = getCurrentShStRefId({
+        const curShstRefId = getCurrentShStRefId({
           prevShStRefId,
           forwardReferenceId,
           backReferenceId
         });
 
-        if (prevShStRefId !== curShStRefId && shstRefCandidates.length) {
+        if (prevShStRefId !== curShstRefId && shstRefCandidates.length) {
           const selectedShStRef = selectShStReferenceFromCandidates(
             shstRefCandidates
           );
@@ -206,12 +208,12 @@ class ShStReferenceFeaturesAsyncIterator {
         const osmMetadata = await getOsmMetadata(dbsByTileType, geomFeature);
 
         const feature =
-          curShStRefId === forwardReferenceId
+          curShstRefId === forwardReferenceId
             ? createForwardReferenceFeature(geomFeature, osmMetadata)
             : createBackReferenceFeature(geomFeature, osmMetadata);
 
         shstRefCandidates.push(feature);
-        prevShStRefId = curShStRefId;
+        prevShStRefId = curShstRefId;
       }
 
       // Done with the loop. Flush the final shstRef.

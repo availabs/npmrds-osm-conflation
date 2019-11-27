@@ -5,7 +5,8 @@
 const _ = require('lodash');
 
 const dao = require('../daos/shstReferencesMatchesDAO');
-const conflationMapService = require('../services/conflationMapLevelDbService');
+// const conflationMapService = require('../services/conflationMapLevelDbService');
+const shstMatchesLevelDbService = require('../services/shstMatchesLevelDbService');
 
 const getShstReferenceAuxProperties = require('./getShstReferenceAuxProperties');
 const getShstMatchedSegmentOffsetsByTargetMap = require('./getShstMatchedSegmentOffsetsByTargetMap');
@@ -26,12 +27,37 @@ const BATCH_SIZE = 1024;
 
     // FIXME: We need to output this segment with just the OSM wayIds in this case.
     if (_.isNil(shstMatchesByTargetMap)) {
+      console.log('NO MATCHES');
       continue;
     }
 
     const shstReferenceAuxProperties = getShstReferenceAuxProperties(
       shstReferenceFeature
     );
+
+    // const curShstReferenceIdxForTargetMapSegments = await Promise.all(
+    // Object.key(shstMatchesByTargetMap).map(targetMap =>
+    // Promise.all(
+    // Object.keys(shstMatchesByTargetMap[targetMap]).map(
+    // ({ targetMapId }) =>
+    // shstMatchesLevelDbService.getShstReferencesChainForTargetMapId(
+    // targetMap,
+    // targetMapId
+    // )
+    // )
+    // )
+    // )
+    // );
+
+    const d = Object.keys(shstMatchesByTargetMap.npmrds_2017).map(
+      ({ targetMapId }) =>
+        shstMatchesLevelDbService.getShstReferencesChainForTargetMapId(
+          'npmrds_2017',
+          targetMapId
+        )
+    );
+
+    console.error(JSON.stringify(d, null, 4));
 
     const shstMatchedSegmentOffsetsByTargetMap = getShstMatchedSegmentOffsetsByTargetMap(
       {
@@ -54,10 +80,11 @@ const BATCH_SIZE = 1024;
     }
 
     if (batch.length >= BATCH_SIZE) {
-      await conflationMapService.putFeatures(batch);
+      // await conflationMapService.putFeatures(batch);
       console.log('BATCH WRITE OF', BATCH_SIZE);
       batch.length = 0;
     }
   }
-  await conflationMapService.putFeatures(batch);
+  console.log('DONE');
+  // await conflationMapService.putFeatures(batch);
 })();
