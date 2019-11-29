@@ -1,3 +1,0 @@
-#!/bin/bash
-
-npm install --save --prefix ./ osrm@5.22.0
