@@ -127,11 +127,16 @@ const getYearDb = async (year, create) => {
   throw new Error('ERROR: data year does not exist');
 };
 
-const makeBatchPutOperation = feature => ({
-  type: 'put',
-  key: getFeatureId(feature),
-  value: feature
-});
+const makeBatchPutOperation = feature => {
+  // eslint-disable-next-line no-param-reassign
+  feature.id = getFeatureId(feature);
+
+  return {
+    type: 'put',
+    key: feature.id,
+    value: feature
+  };
+};
 
 const destroyYearDb = async year => {
   validateYearParam(year);
@@ -207,9 +212,20 @@ async function* makeGeoProximityFeatureAsyncIterator(year, opts) {
   }
 }
 
+const getFeature = async ({ year, id }) => {
+  validateYearParam(year);
+
+  const yearDb = await getYearDb(year);
+
+  const feature = await yearDb.get(id);
+
+  return feature || null;
+};
+
 module.exports = {
   putFeatures,
   putFeature,
+  getFeature,
   makeFeatureAsyncIterator,
   makeGeoProximityFeatureAsyncIterator,
   getDataYears,

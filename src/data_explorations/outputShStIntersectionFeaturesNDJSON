@@ -1,0 +1,17 @@
+#!/usr/bin/env node
+
+/* eslint no-restricted-syntax: 0 */
+
+// https://github.com/sharedstreets/sharedstreets-ref-system#core-concepts
+
+const levelDbService = require('../services/shstTilesetLevelDbService');
+
+(async () => {
+  const iterator = levelDbService.makeIntersectionTileMembersAsyncIterator({
+    limit: 250000
+  });
+
+  for await (const feature of iterator) {
+    console.log(JSON.stringify(feature));
+  }
+})();

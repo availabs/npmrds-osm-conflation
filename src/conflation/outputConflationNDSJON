@@ -4,35 +4,90 @@
 
 // https://github.com/sharedstreets/sharedstreets-ref-system#core-concepts
 
-const service = require('../services/conflationMapLevelDbService');
+const _ = require('lodash');
 
-let id = 0;
+const conflationMapLevelDbService = require('../services/conflationMapLevelDbService');
+const shstMatchesSQLiteService = require('../services/shstMatchesSQLiteService');
+// const risLevelDbService = require('../services/risLevelDbService');
+
+let outputFeatureId = 0;
 
 (async () => {
-  const iterator = service.makeFeatureAsyncIterator();
+  const iterator = conflationMapLevelDbService.makeFeatureAsyncIterator();
 
   for await (const feature of iterator) {
     const {
+      id,
       properties: {
         osm,
         npmrds_2017,
         npmrds_2019,
         ris_2019,
         segmentIndex,
-        totalSegments
+        totalSegments,
+        osmMetadata
       }
     } = feature;
 
-    feature.id = ++id;
+    const [shstRefId] = id.split('|');
+
+    feature.id = ++outputFeatureId;
+
+    if (osmMetadata && osmMetadata.oneWay) {
+      feature.id += 0.5;
+    }
 
     feature.properties = {
-      id,
+      id: feature.id,
       osm,
-      tmc_2017: npmrds_2017,
-      tmc_2019: npmrds_2019,
-      ris_2019: ris_2019 && ris_2019.replace(/##/g, '|'),
       split_seg: `${segmentIndex}:${totalSegments}`
     };
+
+    if (npmrds_2017) {
+      feature.properties.tmc_2017 = npmrds_2017;
+
+      const tmc2017idx = shstMatchesSQLiteService.getShstReferenceIndexForTargetMapSegment(
+        'npmrds_2017',
+        npmrds_2017,
+        shstRefId
+      );
+
+      if (!_.isNil(tmc2017idx)) {
+        feature.properties.tmc2017idx = tmc2017idx;
+      }
+    }
+
+    if (npmrds_2019) {
+      feature.properties.tmc_2019 = npmrds_2019;
+
+      const tmc2019idx = shstMatchesSQLiteService.getShstReferenceIndexForTargetMapSegment(
+        'npmrds_2019',
+        npmrds_2019,
+        shstRefId
+      );
+
+      if (!_.isNil(tmc2019idx)) {
+        feature.properties.tmc2019idx = tmc2019idx;
+      }
+    }
+
+    if (ris_2019) {
+      feature.properties.ris_2019 = ris_2019.replace(/##/g, '|');
+
+      const ris2019idx = shstMatchesSQLiteService.getShstReferenceIndexForTargetMapSegment(
+        'ris_2019',
+        ris_2019,
+        shstRefId
+      );
+
+      if (!_.isNil(ris2019idx)) {
+        feature.properties.ris2019idx = ris2019idx;
+      }
+
+      // const risFeature = await risLevelDbService.get(ris_2019);
+      // console.error(JSON.stringify(risFeature, null, 4));
+      // process.exit();
+    }
 
     console.log(JSON.stringify(feature));
   }

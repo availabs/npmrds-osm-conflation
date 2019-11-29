@@ -10,7 +10,7 @@ const getGeoProximityKeyPrefix = coordinates => {
 
   const interleaved_coords = p_lon
     .split('')
-    .reduce((acc, c, i) => `${acc}${c}${p_lat[i]}`, '');
+    .reduce((acc, c, i) => `${acc}${c || 0}${p_lat[i] || 0}`, '');
 
   return interleaved_coords;
 };

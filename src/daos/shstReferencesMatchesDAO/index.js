@@ -1,30 +1,27 @@
 /* eslint no-restricted-syntax: 0 */
 
-const shstTilesetLevelDbService = require('../../services/shstTilesetLevelDbService');
-const shstMatchesLevelDbService = require('../../services/shstMatchesLevelDbService');
+const shstTilesetSQLiteService = require('../../services/shstTilesetSQLiteService');
+const shstMatchesSQLiteService = require('../../services/shstMatchesSQLiteService');
 
-async function* makeShStReferenceFeatureWithMatchesAsyncIterator(opts) {
+function* makeShStReferenceFeatureWithMatchesAsyncIterator() {
   try {
-    const iterator = shstTilesetLevelDbService.makeShStReferenceFeatureAsyncIterator(
-      opts
-    );
+    const iterator = shstTilesetSQLiteService.makeShStReferenceFeatureIterator();
 
-    console.log('$$$');
-    for await (const shstReferenceFeature of iterator) {
+    for (const shstReferenceFeature of iterator) {
       const { id } = shstReferenceFeature;
 
-      console.log('vvvvvvvvvvvvvvvvvvvvv');
-      console.log(id);
-      const matchesByTargetMapForShStReference = await shstMatchesLevelDbService.getMatchesByTargetMapForShStReference(
+      const matchesByTargetMapForShStReference = shstMatchesSQLiteService.getMatchesByTargetMapForShStReference(
         id
       );
 
       const shstMatchesByTargetMap = matchesByTargetMapForShStReference || null;
 
-      if (shstMatchesByTargetMap) {
-        console.error(JSON.stringify(shstMatchesByTargetMap, null, 4));
-      }
-      console.log('^^^^^^^^^^^^^^^^^^^^^');
+      // if (!_.isEmpty(shstMatchesByTargetMap)) {
+      // console.log('vvvvvvvvvvvvvvvvvvvvv');
+      // console.log(id);
+      // console.error(JSON.stringify(shstMatchesByTargetMap, null, 4));
+      // console.log('^^^^^^^^^^^^^^^^^^^^^');
+      // }
       yield {
         shstReferenceFeature,
         shstMatchesByTargetMap

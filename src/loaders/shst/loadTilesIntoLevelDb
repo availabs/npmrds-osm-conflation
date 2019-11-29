@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-/* eslint no-await-in-loop: 0 */
+/* eslint no-await-in-loop: 0, no-continue: 0 */
 
 // https://github.com/sharedstreets/sharedstreets-ref-system#core-concepts
 
@@ -10,13 +10,12 @@ const { join } = require('path');
 
 const sharedstreetsPbf = require('sharedstreets-pbf');
 
-const levelDbService = require('../../services/shstTilesetLevelDbService');
+const levelDbService = require('../../services/shstTilesetSQLiteService');
 
-const putTileMembersFunctions = {
-  geometry: levelDbService.putGeometryTileMembers,
-  intersection: levelDbService.putIntersectionTileMembers,
-  metadata: levelDbService.putMetadataTileMembers,
-  reference: levelDbService.putReferenceTileMembers
+const insertFunctions = {
+  geometry: levelDbService.insertGeometries,
+  metadata: levelDbService.insertMetadata,
+  reference: levelDbService.insertReferences
 };
 
 const {
@@ -50,7 +49,16 @@ const tileFiles = readdirSync(SHST_TILESET_DIR, { withFileTypes: true })
     const inf = tileFiles[i];
 
     try {
-      const fileType = inf.match(/reference|intersection|geometry|metadata/);
+      const [fileType] = inf.match(/reference|intersection|geometry|metadata/);
+
+      if (fileType !== 'geometry') {
+        continue
+      }
+
+      // We currently have no use for these.
+      if (fileType === 'intersection') {
+        continue;
+      }
 
       const parser = sharedstreetsPbf[fileType];
 
@@ -58,10 +66,11 @@ const tileFiles = readdirSync(SHST_TILESET_DIR, { withFileTypes: true })
 
       assert(Array.isArray(tileMembers));
 
-      const putFn = putTileMembersFunctions[fileType];
+      const insertFn = insertFunctions[fileType];
 
-      await putFn({ tileMembers });
+      await insertFn(tileMembers);
     } catch (err) {
+      // console.error(err)
       console.error(`WARNING: Error processing ${inf}`);
     }
   }

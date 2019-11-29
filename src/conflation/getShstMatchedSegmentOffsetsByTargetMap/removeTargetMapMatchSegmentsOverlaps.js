@@ -84,6 +84,12 @@ const finalOffetsContainsOverlaps = finalOffsets => {
       const { startDist, endDist } = _.first(finalOffsets);
 
       if (startDist > prevEndDist) {
+        console.error(
+          'OVERLAP DETECTED. startDist:',
+          startDist,
+          ', prevEndDist:',
+          prevEndDist
+        );
         return true;
       }
 

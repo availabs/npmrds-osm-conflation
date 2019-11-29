@@ -49,16 +49,16 @@ const getRawOffsets = ({
       IN_KILOMETERS
     );
   } catch (err) {
-    console.error('vvvvvvvvvvvv');
-    console.error(
-      JSON.stringify(
-        { shstReferenceFeature, shstReferenceAuxProperties, matchedSegment },
-        null,
-        4
-      )
-    );
+    // console.error('vvvvvvvvvvvv');
+    // console.error(
+    // JSON.stringify(
+    // { shstReferenceFeature, shstReferenceAuxProperties, matchedSegment },
+    // null,
+    // 4
+    // )
+    // );
     console.error(err);
-    console.error('^^^^^^^^^^^^');
+    // console.error('^^^^^^^^^^^^');
     return null;
   }
   const {

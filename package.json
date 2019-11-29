@@ -17,6 +17,7 @@
   "dependencies": {
     "@turf/helpers": "^6.1.4",
     "@turf/turf": "^5.1.6",
+    "better-sqlite3": "^5.4.3",
     "diff": "^4.0.1",
     "encoding-down": "^6.1.0",
     "eslint-config-prettier": "^6.0.0",

@@ -16,7 +16,7 @@ const getOffsetsAlongShstRefForUnderlyingOsmWays = ({
     shstRefGeomVerticesSeq
   } = shstReferenceAuxProperties;
 
-  if (!(osmWaySections && osmNodeIdsSeq)) {
+  if (!(osmWaySections && osmNodeIdsSeq && shstRefGeomVerticesSeq)) {
     return null;
   }
 

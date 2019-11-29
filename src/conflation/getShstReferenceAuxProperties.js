@@ -34,14 +34,6 @@ const getShstRefGeomVerticesSeq = ({
     return null;
   }
 
-  // console.error(
-  // JSON.stringify(
-  // { shstReferenceFeature, shstReferenceAuxProperties },
-  // null,
-  // 4
-  // )
-  // );
-
   const shstRefGeomVerticesSeq = turf
     .explode(shstReferenceFeature)
     .features.reduce((acc, vertex, i) => {

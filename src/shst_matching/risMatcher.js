@@ -11,14 +11,14 @@ const tmp = require('tmp');
 const turfHelpers = require('@turf/helpers');
 
 const risLevelDbService = require('../services/risLevelDbService');
-const shstMatchesLevelDbService = require('../services/shstMatchesLevelDbService');
+const shstMatchesSQLiteService = require('../services/shstMatchesSQLiteService');
 
 const PROJECT_ROOT = join(__dirname, '../../');
 const DATA_DIR = join(PROJECT_ROOT, 'data/shst/');
 const SHST_PATH = join(__dirname, '../../node_modules/.bin/shst');
 
 const RIS = 'ris';
-const BATCH_SIZE = 512;
+const BATCH_SIZE = 128;
 const UTF8_ENCODING = 'utf8';
 const SHST_CHILD_PROC_OPTS = {
   cwd: PROJECT_ROOT,
@@ -60,8 +60,10 @@ const runMatcher = (inFilePath, outFilePath, flags) =>
       resolve();
     });
 
-    cp.stdout.pipe(process.stdout);
-    cp.stderr.pipe(process.stderr);
+    if (cp.stdout) {
+      cp.stdout.pipe(process.stdout);
+      cp.stderr.pipe(process.stderr);
+    }
   });
 
 const runMotorwaysOnlyMatching = (inFilePath, outFilePath) =>
@@ -107,9 +109,8 @@ const runMatcherForFeaturesBatch = async features => {
   }
 
   if (existsSync(unmatchedFilePath)) {
-    renameSync(unmatchedFilePath, inFilePath);
-
     try {
+      renameSync(unmatchedFilePath, inFilePath);
       await runSurfaceStreetsOnlyMatching(inFilePath, outFilePath);
       matchedFeatures.push(...collectMatchedFeatures(matchedFilePath));
     } catch (err) {
@@ -142,21 +143,31 @@ const matchAndLoadBatch = async (year, batch) => {
     );
   }
 
-  await shstMatchesLevelDbService.putFeatures(matchedFeatures);
+  return matchedFeatures;
 };
 
 const runMatcherForYear = async year => {
+  const previousRunMatchedFeatures = shstMatchesSQLiteService.getSetOfAllMatchedSementsForTargetMap(
+    `${RIS}_${year}`
+  );
   const featuresIterator = risLevelDbService.makeGeoProximityFeatureAsyncIterator(
     year
-    // { limit: 256 }
   );
 
   const batch = [];
 
+  let counter = 0;
   for await (const feature of featuresIterator) {
-    batch.push(feature);
+    ++counter;
+    if (!previousRunMatchedFeatures.has(feature.id)) {
+      batch.push(feature);
+    }
+
     if (batch.length === BATCH_SIZE) {
-      await matchAndLoadBatch(year, batch);
+      console.log('counter:', counter);
+      const matchedFeatures = await matchAndLoadBatch(year, batch);
+
+      shstMatchesSQLiteService.putFeatures(matchedFeatures);
       batch.length = 0;
     }
   }
