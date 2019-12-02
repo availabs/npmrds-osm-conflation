@@ -161,9 +161,41 @@ function* makeGeoProximityFeatureIterator(targetMap) {
   }
 }
 
+const featureQueriesByTargetMap = {};
+const getFeatureQueryForTargetMap = targetMap => {
+  const query = featureQueriesByTargetMap[targetMap];
+
+  if (query) {
+    return query;
+  }
+
+  featureQueriesByTargetMap[targetMap] = db.prepare(`
+    SELECT feature
+      FROM ${targetMap}
+      WHERE (id = ?) ;
+  `);
+
+  return featureQueriesByTargetMap[targetMap];
+};
+
+const getFeature = (targetMap, id) => {
+  const query = getFeatureQueryForTargetMap(targetMap)
+
+  const [strFeature] = query.raw().get(id)
+
+  if (!strFeature) {
+    return null
+  }
+
+  const feature = JSON.parse(strFeature)
+
+  return feature
+}
+
 module.exports = {
   getTargetMapsList,
   insertFeatures,
   makeFeatureIterator,
-  makeGeoProximityFeatureIterator
+  makeGeoProximityFeatureIterator,
+  getFeature
 };
