@@ -2,7 +2,7 @@
 
 const _ = require('lodash');
 
-const getGeoProximityKeyPrefix = coordinates => {
+const getGeoProximityKeyPrefix = ({ geometry: { coordinates } }) => {
   const [lon, lat] = _.flattenDeep(coordinates);
 
   const p_lon = _.round(Math.abs(+lon * 100000)).toString(2);

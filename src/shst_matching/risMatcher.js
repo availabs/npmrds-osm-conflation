@@ -10,15 +10,14 @@ const _ = require('lodash');
 const tmp = require('tmp');
 const turfHelpers = require('@turf/helpers');
 
-const risLevelDbService = require('../services/risLevelDbService');
+const targetMapsSQLiteService = require('../services/targetMapsSQLiteService');
 const shstMatchesSQLiteService = require('../services/shstMatchesSQLiteService');
 
 const PROJECT_ROOT = join(__dirname, '../../');
 const DATA_DIR = join(PROJECT_ROOT, 'data/shst/');
 const SHST_PATH = join(__dirname, '../../node_modules/.bin/shst');
 
-const RIS = 'ris';
-const BATCH_SIZE = 128;
+const BATCH_SIZE = 64;
 const UTF8_ENCODING = 'utf8';
 const SHST_CHILD_PROC_OPTS = {
   cwd: PROJECT_ROOT,
@@ -123,7 +122,7 @@ const runMatcherForFeaturesBatch = async features => {
   return matchedFeatures;
 };
 
-const matchAndLoadBatch = async (year, batch) => {
+const matchFeatures = async (targetMap, batch) => {
   const matchedFeatures = await runMatcherForFeaturesBatch(batch);
 
   for (let i = 0; i < matchedFeatures.length; ++i) {
@@ -135,7 +134,7 @@ const matchAndLoadBatch = async (year, batch) => {
       {},
       _.omitBy(properties, (v, k) => k.match(/^pp_/)),
       {
-        targetMap: `${RIS}_${year}`,
+        targetMap,
         targetMapId: `${properties.pp_gis_id}##${properties.pp_beg_mp}`,
         targetMapIsPrimary: !(properties.pp_overlap_hierarchy > 1),
         targetMapNetHrchyRank: +properties.pp_functional_class % 10
@@ -146,18 +145,19 @@ const matchAndLoadBatch = async (year, batch) => {
   return matchedFeatures;
 };
 
-const runMatcherForYear = async year => {
+const runMatcherForYear = async targetMap => {
   const previousRunMatchedFeatures = shstMatchesSQLiteService.getSetOfAllMatchedSementsForTargetMap(
-    `${RIS}_${year}`
+    targetMap
   );
-  const featuresIterator = risLevelDbService.makeGeoProximityFeatureAsyncIterator(
-    year
+
+  const featuresIterator = targetMapsSQLiteService.makeGeoProximityFeatureIterator(
+    targetMap
   );
 
   const batch = [];
 
   let counter = 0;
-  for await (const feature of featuresIterator) {
+  for (const feature of featuresIterator) {
     ++counter;
     if (!previousRunMatchedFeatures.has(feature.id)) {
       batch.push(feature);
@@ -165,23 +165,28 @@ const runMatcherForYear = async year => {
 
     if (batch.length === BATCH_SIZE) {
       console.log('counter:', counter);
-      const matchedFeatures = await matchAndLoadBatch(year, batch);
+      const matchedFeatures = await matchFeatures(targetMap, batch);
 
       shstMatchesSQLiteService.putFeatures(matchedFeatures);
       batch.length = 0;
     }
   }
   if (batch.length) {
-    await matchAndLoadBatch(year, batch);
+    await matchFeatures(targetMap, batch);
   }
 };
 
 (async () => {
   try {
-    const years = await risLevelDbService.getDataYears();
+    const targetMaps = targetMapsSQLiteService.getTargetMapsList();
 
-    for (let i = 0; i < years.length; ++i) {
-      await runMatcherForYear(years[i]);
+    const risTargetMaps = targetMaps.filter(targetMap =>
+      /^ris_\d{4}$/.test(targetMap)
+    );
+
+    for (let i = 0; i < risTargetMaps.length; ++i) {
+      const targetMap = risTargetMaps[i];
+      await runMatcherForYear(targetMap);
     }
   } catch (err) {
     console.error(err);

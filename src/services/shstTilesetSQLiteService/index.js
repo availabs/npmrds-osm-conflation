@@ -97,19 +97,14 @@ const insertGeometries = geometries => {
   for (let i = 0; i < geomsArr.length; i++) {
     const geom = geomsArr[i];
 
-    const {
-      id,
-      lonlats,
-      forwardReferenceId,
-      backReferenceId,
-    } = geom;
+    const { id, lonlats, forwardReferenceId, backReferenceId } = geom;
 
     const coords = _.chunk(lonlats, 2);
 
     const properties = {
       id,
       forwardReferenceId,
-      backReferenceId,
+      backReferenceId
     };
 
     const feature = turfHelpers.lineString(coords, properties, { id });

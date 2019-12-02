@@ -9,6 +9,8 @@ const _ = require('lodash');
 const conflationMapSQLiteService = require('../services/conflationMapSQLiteService');
 const shstMatchesSQLiteService = require('../services/shstMatchesSQLiteService');
 
+const { shstOsmWayRoadClassRankings } = require('./constants')
+
 let outputFeatureId = 0;
 
 const iterator = conflationMapSQLiteService.makeConflationMapFeatureIterator();
@@ -31,15 +33,21 @@ for (const feature of iterator) {
 
   feature.id = ++outputFeatureId;
 
-  if (osmMetadata && osmMetadata.oneWay) {
-    feature.id += 0.5;
+  const { roadClass = 'Other' , oneWay = false } = osmMetadata || {}
+
+  let networklevel = shstOsmWayRoadClassRankings[roadClass]
+
+  if (oneWay) {
+    networklevel += 0.5
   }
 
   feature.properties = {
     id: feature.id,
     osm,
-    split_seg: `${segmentIndex}:${totalSegments}`
+    split_seg: `${segmentIndex}:${totalSegments}`,
+    networklevel
   };
+
 
   if (npmrds_2017) {
     feature.properties.tmc_2017 = npmrds_2017;

@@ -4,9 +4,7 @@ const { isAbsolute, basename, join } = require('path');
 const yargs = require('yargs');
 const recursive = require('recursive-readdir');
 
-const { loadGzippedInputFiles } = require('./generalSourceDataLoader');
-
-const levelDbService = require('../services/npmrdsLevelDbService');
+const loadFeaturesFromGZippedNDSJON = require('./loadFeaturesFromGZippedNDSJON');
 
 const cliArgsSpec = {
   data_dir: {
@@ -26,6 +24,8 @@ const { argv } = yargs
 
 const { data_dir } = argv;
 
+const getFeatureId = ({ properties: { tmc } }) => tmc;
+
 const dataDirAbs = isAbsolute(data_dir)
   ? data_dir
   : join(process.cwd(), data_dir);
@@ -40,19 +40,23 @@ const ignoreAllFilesExceptYearNDJSON = (file, stats) => {
       ignoreAllFilesExceptYearNDJSON
     ]);
 
-    const gzippedInputFilesByYear = ndjsonGzFiles.reduce((acc, filePath) => {
+    ndjsonGzFiles.sort();
+
+    for (let i = 0; i < ndjsonGzFiles.length; ++i) {
+      const filePath = ndjsonGzFiles[i];
+
       const fileBaseName = basename(filePath);
       const [year] = fileBaseName.match(/\d{4}/);
 
-      acc[year] = filePath;
-      return acc;
-    }, {});
+      const targetMap = `npmrds_${year}`;
 
-    // Load the NDJSON files concurrently
-    await loadGzippedInputFiles({
-      levelDbService,
-      gzippedInputFilesByYear
-    });
+      // eslint-disable-next-line no-await-in-loop
+      await loadFeaturesFromGZippedNDSJON({
+        targetMap,
+        filePath,
+        getFeatureId
+      });
+    }
   } catch (err) {
     if (err.code === 'ENOENT') {
       console.error(

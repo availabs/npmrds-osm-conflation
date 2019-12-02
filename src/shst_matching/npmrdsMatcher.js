@@ -10,17 +10,16 @@ const _ = require('lodash');
 const tmp = require('tmp');
 const turfHelpers = require('@turf/helpers');
 
-const npmrdsLevelDbService = require('../services/npmrdsLevelDbService');
+const targetMapsSQLiteService = require('../services/targetMapsSQLiteService');
 const shstMatchesSQLiteService = require('../services/shstMatchesSQLiteService');
 
 const PROJECT_ROOT = join(__dirname, '../../');
 const DATA_DIR = join(PROJECT_ROOT, 'data/shst/');
 const SHST_PATH = join(__dirname, '../../node_modules/.bin/shst');
 
-const NPMRDS = 'npmrds';
 const UNDEFINED_FSYSTEM_RANK = 10;
 
-const BATCH_SIZE = 128;
+const BATCH_SIZE = 64;
 const UTF8_ENCODING = 'utf8';
 const SHST_CHILD_PROC_OPTS = {
   cwd: PROJECT_ROOT,
@@ -120,7 +119,7 @@ const runMatcherForFeaturesBatch = async features => {
   return matchedFeatures;
 };
 
-const matchAndLoadBatch = async (year, batch) => {
+const matchFeatures = async (targetMap, batch) => {
   const matchedFeatures = await runMatcherForFeaturesBatch(batch);
 
   const isSomething = v => !(_.isNil(v) || v === '');
@@ -134,7 +133,7 @@ const matchAndLoadBatch = async (year, batch) => {
       {},
       _.omitBy(properties, (v, k) => k.match(/^pp_/)),
       {
-        targetMap: `${NPMRDS}_${year}`,
+        targetMap,
         targetMapId: properties.pp_tmc,
         targetMapIsPrimary: isSomething(properties.pp_isprimary)
           ? !!+properties.pp_isprimary
@@ -149,19 +148,19 @@ const matchAndLoadBatch = async (year, batch) => {
   return matchedFeatures;
 };
 
-const runMatcherForYear = async year => {
+const runMatcherForYear = async targetMap => {
   const previousRunMatchedFeatures = shstMatchesSQLiteService.getSetOfAllMatchedSementsForTargetMap(
-    `${NPMRDS}_${year}`
+    targetMap
   );
 
-  const featuresIterator = npmrdsLevelDbService.makeGeoProximityFeatureAsyncIterator(
-    year
+  const featuresIterator = targetMapsSQLiteService.makeGeoProximityFeatureIterator(
+    targetMap
   );
 
   const batch = [];
 
   let counter = 0;
-  for await (const feature of featuresIterator) {
+  for (const feature of featuresIterator) {
     ++counter;
     if (!previousRunMatchedFeatures.has(feature.id)) {
       batch.push(feature);
@@ -169,23 +168,28 @@ const runMatcherForYear = async year => {
 
     if (batch.length === BATCH_SIZE) {
       console.log('counter:', counter);
-      const matchedFeatures = await matchAndLoadBatch(year, batch);
+      const matchedFeatures = await matchFeatures(targetMap, batch);
 
       shstMatchesSQLiteService.putFeatures(matchedFeatures);
       batch.length = 0;
     }
   }
   if (batch.length) {
-    await matchAndLoadBatch(year, batch);
+    await matchFeatures(targetMap, batch);
   }
 };
 
 (async () => {
   try {
-    const years = npmrdsLevelDbService.getDataYears();
+    const targetMaps = targetMapsSQLiteService.getTargetMapsList();
 
-    for (let i = 0; i < years.length; ++i) {
-      await runMatcherForYear(years[i]);
+    const npmrdsTargetMaps = targetMaps.filter(targetMap =>
+      /^npmrds_\d{4}$/.test(targetMap)
+    );
+
+    for (let i = 0; i < npmrdsTargetMaps.length; ++i) {
+      const targetMap = npmrdsTargetMaps[i];
+      await runMatcherForYear(targetMap);
     }
   } catch (err) {
     console.error(err);
