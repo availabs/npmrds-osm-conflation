@@ -20,7 +20,7 @@ const SHST_TILESET_SQLITE_PATH = join(SQLITE_PATH, 'shst_tileset');
 const db = new Database(SHST_TILESET_SQLITE_PATH);
 
 // https://github.com/JoshuaWise/better-sqlite3/issues/125#issuecomment-386752196
-db.pragma('journal_mode = WAL');
+// db.pragma('journal_mode = WAL');
 
 // Initialize the database
 db.exec(`

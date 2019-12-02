@@ -18,7 +18,7 @@ const SHST_MATCHES_SQLITE_PATH = join(SQLITE_PATH, 'shst_matches');
 const db = new Database(SHST_MATCHES_SQLITE_PATH);
 
 // https://github.com/JoshuaWise/better-sqlite3/issues/125#issuecomment-386752196
-db.pragma('journal_mode = WAL');
+// db.pragma('journal_mode = WAL');
 
 // Initialize the database
 db.exec(`
@@ -132,7 +132,7 @@ const matchFeaturesForShstReferenceByTargetMapIteratorQuery = db.prepare(`
 // Makes an iterator over all shst match output features,
 //   grouped by shstReferenceIds, then targetMap.
 //   Returned data structure: { [targetMap]: [...matchFeatures] }
-function* makeMatchFeaturesForShstReferenceByTargetMapIteratorQuery() {
+function* makeMatchFeaturesForShstReferenceByTargetMapIterator() {
   const iterator = matchFeaturesForShstReferenceByTargetMapIteratorQuery.iterate();
 
   let curShstRef;
@@ -293,7 +293,7 @@ const getMaxMatchedSegmentGeoProximityKeyForTargetMap = targetMap => {
 module.exports = {
   putFeatures,
   makeTargetMapFeatureIterator,
-  makeMatchFeaturesForShstReferenceByTargetMapIteratorQuery,
+  makeMatchFeaturesForShstReferenceByTargetMapIterator,
   makeAllMatchedFeaturesIterator,
   getMatchesByTargetMapForShStReference,
   getShstReferenceIndexForTargetMapSegment,

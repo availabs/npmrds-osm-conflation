@@ -8,15 +8,13 @@ const dao = require('../daos/shstReferencesMatchesDAO');
 
 const getShstReferenceAuxProperties = require('./getShstReferenceAuxProperties');
 const getShstMatchedSegmentOffsetsByTargetMap = require('./getShstMatchedSegmentOffsetsByTargetMap');
-const partitionShstReferenceByTargetMapsMatches = require('./partitionShstReferenceByTargetMapsMatches');
-const conflationMapService = require('../services/conflationMapLevelDbService');
 
-const BATCH_SIZE = 1024;
+const partitionShstReferenceByTargetMapsMatches = require('./partitionShstReferenceByTargetMapsMatches');
+
+const conflationMapSQLiteService = require('../services/conflationMapSQLiteService');
 
 (async () => {
   const iterator = dao.makeShStReferenceFeatureWithMatchesAsyncIterator();
-
-  const batch = [];
 
   for await (const {
     shstReferenceFeature,
@@ -48,16 +46,11 @@ const BATCH_SIZE = 1024;
     });
 
     if (shstReferencePartitions) {
-      batch.push(...shstReferencePartitions.filter(p => p));
+      conflationMapSQLiteService.insertConflationMapFeatures(
+        shstReferencePartitions
+      );
     } else {
       console.error(`NO MAPPINGS FOR SHST_REF_ID=${id}`);
     }
-
-    if (batch.length >= BATCH_SIZE) {
-      await conflationMapService.putFeatures(batch);
-      console.log('BATCH WRITE OF', BATCH_SIZE);
-      batch.length = 0;
-    }
   }
-  await conflationMapService.putFeatures(batch);
 })();
