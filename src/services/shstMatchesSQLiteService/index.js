@@ -7,7 +7,7 @@ const _ = require('lodash');
 
 const Database = require('better-sqlite3');
 
-const getShstReferenceIndexForTargetMapSegmentMatches = require('./getShstReferenceIndexForTargetMapSegmentMatches');
+const makeShstReferenceChains = require('./getShstReferenceChains');
 
 const getGeoProximityKeyPrefix = require('../../utils/getGeoProximityKeyPrefix');
 
@@ -219,11 +219,7 @@ const shstReferencesChainForTargetMapMatchQuery = db.prepare(`
 `);
 
 // Returns the topologically sorted shstReferences for the given target map segment.
-const getShstReferenceIndexForTargetMapSegment = (
-  targetMap,
-  targetMapId,
-  shstReferenceId
-) => {
+const getShstReferenceChains = (targetMap, targetMapId) => {
   const result = shstReferencesChainForTargetMapMatchQuery.all([
     targetMap,
     targetMapId
@@ -239,12 +235,7 @@ const getShstReferenceIndexForTargetMapSegment = (
   );
 
   try {
-    const idx = getShstReferenceIndexForTargetMapSegmentMatches(
-      shstNetEdges,
-      shstReferenceId
-    );
-
-    return idx;
+    return makeShstReferenceChains(shstNetEdges);
   } catch (err) {
     console.error(err);
     return null;
@@ -296,7 +287,7 @@ module.exports = {
   makeMatchFeaturesForShstReferenceByTargetMapIterator,
   makeAllMatchedFeaturesIterator,
   getMatchesByTargetMapForShStReference,
-  getShstReferenceIndexForTargetMapSegment,
+  getShstReferenceChains,
   getSetOfAllMatchedSementsForTargetMap,
   getMaxMatchedSegmentGeoProximityKeyForTargetMap
 };

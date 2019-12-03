@@ -16,12 +16,6 @@ function* makeShStReferenceFeatureWithMatchesAsyncIterator() {
 
       const shstMatchesByTargetMap = matchesByTargetMapForShStReference || null;
 
-      // if (!_.isEmpty(shstMatchesByTargetMap)) {
-      // console.log('vvvvvvvvvvvvvvvvvvvvv');
-      // console.log(id);
-      // console.error(JSON.stringify(shstMatchesByTargetMap, null, 4));
-      // console.log('^^^^^^^^^^^^^^^^^^^^^');
-      // }
       yield {
         shstReferenceFeature,
         shstMatchesByTargetMap

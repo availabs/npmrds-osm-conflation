@@ -1,0 +1,50 @@
+=========================
+{
+    "targetMap": "npmrds_2019",
+    "targetMapId": "104+04099",
+    "conflationMapIds": [
+        "41973bae0405c7986e25cac41138b9d2|2|7",
+        "41973bae0405c7986e25cac41138b9d2|3|7",
+        "41973bae0405c7986e25cac41138b9d2|4|7",
+        "41973bae0405c7986e25cac41138b9d2|5|7",
+        "41973bae0405c7986e25cac41138b9d2|6|7",
+        "41973bae0405c7986e25cac41138b9d2|7|7"
+    ],
+    "chains": [
+        {
+            "shstReferenceId": "41973bae0405c7986e25cac41138b9d2",
+            "shstFromIntersectionId": "e181e187d4b9c2a2eaac3653443321a4",
+            "shstToIntersectionId": "d65a77e3ecafbb742c51cf404efc038d"
+        }
+    ]
+}
+=========================
+
+<--- Last few GCs --->
+
+[19755:0x4388b50]    11539 ms: Mark-sweep 579.0 (598.6) -> 579.0 (583.6) MB, 128.8 / 0.0 ms  (average mu = 0.764, current mu = 0.000) last resort GC in old space requested
+[19755:0x4388b50]    11673 ms: Mark-sweep 579.0 (583.6) -> 579.0 (583.6) MB, 133.8 / 0.0 ms  (average mu = 0.610, current mu = 0.000) last resort GC in old space requested
+
+
+<--- JS stacktrace --->
+
+==== JS stack trace =========================================
+
+    0: ExitFrame [pc: 0x28e6e9cdbe1d]
+Security context: 0x34f1b9f95591 <JSObject>
+    1: getShstReferenceChains [0x22b28f241881] [/home/paul/AVAIL/npmrds-osm-conflation/src/services/shstMatchesSQLiteService/getShstReferenceChains.js:~5] [pc=0x28e6e9d7e7c1](this=0x080de778d481 <JSGlobal Object>,shstNetEdgesParam=0x22b28f2418b9 <JSArray[5]>)
+    2: getShstReferenceChains [0x22b28f241931] [/home/paul/AVAIL/npmrds-osm-conflation/src/services/...
+
+FATAL ERROR: CALL_AND_RETRY_LAST Allocation failed - JavaScript heap out of memory
+ 1: 0x8fa050 node::Abort() [node]
+ 2: 0x8fa09c  [node]
+ 3: 0xb0020e v8::Utils::ReportOOMFailure(v8::internal::Isolate*, char const*, bool) [node]
+ 4: 0xb00444 v8::internal::V8::FatalProcessOutOfMemory(v8::internal::Isolate*, char const*, bool) [node]
+ 5: 0xef4952  [node]
+ 6: 0xf0416f v8::internal::Heap::AllocateRawWithRetryOrFail(int, v8::internal::AllocationSpace, v8::internal::AllocationAlignment) [node]
+ 7: 0xecd1c6 v8::internal::Factory::AllocateRawArray(int, v8::internal::PretenureFlag) [node]
+ 8: 0xecda4a v8::internal::Factory::NewFixedArrayWithFiller(v8::internal::Heap::RootListIndex, int, v8::internal::Object*, v8::internal::PretenureFlag) [node]
+ 9: 0xece007 v8::internal::Factory::NewUninitializedFixedArray(int, v8::internal::PretenureFlag) [node]
+10: 0xe8138f  [node]
+11: 0x1127acd v8::internal::Runtime_GrowArrayElements(int, v8::internal::Object**, v8::internal::Isolate*) [node]
+12: 0x28e6e9cdbe1d 
