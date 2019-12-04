@@ -8,19 +8,14 @@ const _ = require('lodash');
 
 const Database = require('better-sqlite3');
 
-const tmp = require('tmp');
-
 const SQLITE_PATH = join(__dirname, '../../../data/sqlite/');
 
 const CONFLATION_MAP_SQLITE_PATH = join(SQLITE_PATH, 'conflation_map');
 
 const db = new Database(CONFLATION_MAP_SQLITE_PATH);
 
-tmp.setGracefulCleanup();
-// const { name: tmpDatabase } = tmp.fileSync();
-
-const tmpDatabase = join(SQLITE_PATH, 'tmp_conflation_map');
 // https://github.com/JoshuaWise/better-sqlite3/issues/203
+const tmpDatabase = join(SQLITE_PATH, 'conflation_map_segidx_lookup');
 const tmpDb = new Database(tmpDatabase);
 
 // https://github.com/JoshuaWise/better-sqlite3/issues/125#issuecomment-386752196
@@ -153,7 +148,11 @@ const insertConflationMapSegIndexesForTargetMapSegment = (
       insertStmt.run([conflationMapId, targetMapSegIdx]);
     } catch (err) {
       console.error(
-        JSON.stringify({ conflationMapId, targetMapSegIdx }, null, 4)
+        JSON.stringify(
+          { msg: 'INSERT ERROR', conflationMapId, targetMapSegIdx },
+          null,
+          4
+        )
       );
       console.error(err);
     }

@@ -4,9 +4,7 @@
 
 const _ = require('lodash');
 
-// const { readFileSync } = require('fs');
-// const { join } = require('path');
-// const turf = require('@turf/turf');
+const { shstOsmWayRoadClassRankings } = require('../../conflation/constants');
 
 // const nysBoundingPolygon = JSON.parse(
 // readFileSync(join(__dirname, './nys.bounding.geojson'))
@@ -24,6 +22,21 @@ const selectShStReferenceFromCandidates = require('./selectShStReferenceFromCand
 // In the SharedStreets tileset, References are not GeoJSON features.
 //   They are simply metadata objects.
 //   We need to use their respective
+
+const getNetworkLevel = osmMetadata => {
+  const roadClass = (osmMetadata && osmMetadata.roadClass) || 'Other';
+
+  let networklevel = shstOsmWayRoadClassRankings[roadClass];
+
+  const oneWay = (osmMetadata && osmMetadata.oneWay) || false;
+
+  if (oneWay) {
+    networklevel += 0.5;
+  }
+
+  return networklevel;
+};
+
 const createForwardReferenceFeature = (geomFeature, osmMetadata) => {
   const {
     properties: {
@@ -40,7 +53,8 @@ const createForwardReferenceFeature = (geomFeature, osmMetadata) => {
     fromIntersectionId,
     toIntersectionId,
     reversed: false,
-    osmMetadata
+    osmMetadata,
+    networklevel: getNetworkLevel(osmMetadata)
   };
 
   return Object.assign({}, geomFeature, { id: forwardReferenceId, properties });
@@ -74,7 +88,8 @@ const createBackReferenceFeature = (geomFeature, osmMetadata) => {
     fromIntersectionId: toIntersectionId,
     toIntersectionId: fromIntersectionId,
     reversed: true,
-    osmMetadata: reversedOsmMetadata
+    osmMetadata: reversedOsmMetadata,
+    networklevel: getNetworkLevel(osmMetadata)
   };
 
   const reversedCoords = geometry.coordinates.slice().reverse();

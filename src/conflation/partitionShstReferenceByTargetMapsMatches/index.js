@@ -65,7 +65,8 @@ const partitionShstReferenceByTargetMapsMatches = ({
     'fromIntersectionId',
     'toIntersectionId',
     'reversed',
-    'state'
+    'state',
+    'networklevel'
   ]);
 
   for (let i = 1; i < orderedSplitterOffsetsList.length; ++i) {

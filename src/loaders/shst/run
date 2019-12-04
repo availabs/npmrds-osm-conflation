@@ -34,4 +34,4 @@ Object.assign(process.env, {
 // });
 // }
 
-spawnSync(join(__dirname, './loadTilesIntoLevelDb'), { stdio: 'inherit' });
+spawnSync(join(__dirname, './loadTiles'), { stdio: 'inherit' });

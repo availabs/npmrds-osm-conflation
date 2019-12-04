@@ -13,7 +13,7 @@ const { uniq } = require('lodash');
 const { conflator } = require('sharedstreets-conflator');
 const request = require('request');
 
-const shstMatchesLevelDbService = require('../../services/shstMatchesLevelDbService');
+const shstMatchesSQLiteService = require('../../services/shstMatchesSQLiteService');
 
 const {
   SHST_TILE_HIERARCHY_LEVEL,
@@ -40,9 +40,9 @@ const getTileName = ({ tile: [x, y] }) =>
   `12-${x}-${y}.geometry.${SHST_TILE_HIERARCHY_LEVEL}.pbf`;
 
 (async () => {
-  const iterator = shstMatchesLevelDbService.makeAllMatchedFeaturesAsyncIterator();
+  const iterator = shstMatchesSQLiteService.makeAllMatchedFeaturesIterator();
 
-  for await (const feature of iterator) {
+  for (const feature of iterator) {
     const tileNames = uniq(
       [...conflator(feature, { zoom: 12 })].map(getTileName)
     ).filter(tileName => !seenGeomTiles.has(tileName));

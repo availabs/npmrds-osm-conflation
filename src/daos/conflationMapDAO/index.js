@@ -17,20 +17,73 @@ function initializeConflationMapSegIdxLookupTableForTargetMap(targetMap) {
     throw new Error('targetMap parameter is required.');
   }
 
-  try {
-    const iterator = conflationMapSQLiteService.makeConflationMapIdsGroupedByTargetMapSegmentsIterator(
-      targetMap
-    );
+  const iterator = conflationMapSQLiteService.makeConflationMapIdsGroupedByTargetMapSegmentsIterator(
+    targetMap
+  );
 
-    for (const { targetMapId, conflationMapIds } of iterator) {
-      console.error('='.repeat(25));
-      const chains = shstMatchesSQLiteService.getShstReferenceChains(
+  for (const { targetMapId, conflationMapIds } of iterator) {
+    try {
+      // console.error('='.repeat(25));
+      const { chains } = shstMatchesSQLiteService.getShstReferenceChains(
         targetMap,
         targetMapId
       );
 
-      if (!chains) {
+      if (!chains || chains.length === 0) {
+        console.log(
+          JSON.stringify({
+            msg: 'NO_CHAINS',
+            targetMap,
+            targetMapId
+          })
+        );
         continue;
+      }
+
+      if (chains.length > 2) {
+        console.log(
+          JSON.stringify({
+            msg: 'MORE_THAN_TWO_CHAINS',
+            targetMap,
+            targetMapId
+          })
+        );
+        const pairwiseChains = [];
+
+        // https://stackoverflow.com/a/43241295
+        for (let i = 0; i < chains.length - 1; ++i) {
+          for (let j = i + 1; j < chains.length; ++j) {
+            const a = chains[i];
+            const b = chains[j];
+
+            if (_.intersection(a, b).length) {
+              continue;
+            }
+
+            pairwiseChains.push([chains[i], chains[j]]);
+          }
+        }
+
+        pairwiseChains.sort(
+          (a, b) => _.flatten(b).length - _.flatten(a).length
+        );
+
+        chains.length = 0;
+        chains.push(...pairwiseChains.slice(0, 2));
+      } else if (chains.length === 2 && _.intersection(...chains).length > 0) {
+        console.log(
+          JSON.stringify({
+            msg: 'INTERSECTING_CHAINS',
+            targetMap,
+            targetMapId
+          })
+        );
+
+        if (chains[0].length > chains[1].length) {
+          chains.pop();
+        } else {
+          chains.shift();
+        }
       }
 
       const conflationMapSegChains = chains.map(chain =>
@@ -43,9 +96,9 @@ function initializeConflationMapSegIdxLookupTableForTargetMap(targetMap) {
         )
       );
 
-      console.error(
-        JSON.stringify({ conflationMapIds, conflationMapSegChains }, null, 4)
-      );
+      // console.error(
+      // JSON.stringify({ conflationMapIds, conflationMapSegChains }, null, 4)
+      // );
 
       if (conflationMapSegChains.length === 2) {
         if (
@@ -74,13 +127,12 @@ function initializeConflationMapSegIdxLookupTableForTargetMap(targetMap) {
 
       conflationMapSQLiteService.insertConflationMapSegIndexesForTargetMapSegment(
         targetMap,
-        targetMapSegIndexes,
-        targetMapId
+        targetMapSegIndexes
       );
+    } catch (err) {
+      // console.error(err);
+      // process.exit(1);
     }
-  } catch (err) {
-    console.error(err);
-    process.exit(1);
   }
 }
 

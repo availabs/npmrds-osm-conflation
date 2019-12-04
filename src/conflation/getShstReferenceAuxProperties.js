@@ -33,7 +33,6 @@ const getShstRefGeomVerticesSeq = ({
   if (!osmNodeIdsSeq) {
     return null;
   }
-
   const shstRefGeomVerticesSeq = turf
     .explode(shstReferenceFeature)
     .features.reduce((acc, vertex, i) => {

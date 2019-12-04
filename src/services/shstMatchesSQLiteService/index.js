@@ -7,7 +7,7 @@ const _ = require('lodash');
 
 const Database = require('better-sqlite3');
 
-const makeShstReferenceChains = require('./getShstReferenceChains');
+const makeShstReferenceChains = require('./makeShstReferenceChains');
 
 const getGeoProximityKeyPrefix = require('../../utils/getGeoProximityKeyPrefix');
 
@@ -235,7 +235,8 @@ const getShstReferenceChains = (targetMap, targetMapId) => {
   );
 
   try {
-    return makeShstReferenceChains(shstNetEdges);
+    const chains = makeShstReferenceChains(shstNetEdges);
+    return { shstNetEdges, chains };
   } catch (err) {
     console.error(err);
     return null;
