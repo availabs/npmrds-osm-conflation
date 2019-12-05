@@ -6,7 +6,12 @@ const { pipe, through } = require('mississippi');
 const split = require('split2');
 const targetMapsSQLiteService = require('../services/targetMapsSQLiteService');
 
-const loadFeaturesFromGZippedNDJSON = ({ targetMap, filePath, getFeatureId }) =>
+const loadFeaturesFromGZippedNDJSON = ({
+  targetMap,
+  filePath,
+  getFeatureId,
+  featureFilter = () => true
+}) =>
   new Promise((resolve, reject) => {
     pipe(
       createReadStream(filePath),
@@ -16,7 +21,9 @@ const loadFeaturesFromGZippedNDJSON = ({ targetMap, filePath, getFeatureId }) =>
         // eslint-disable-next-line no-param-reassign
         feature.id = getFeatureId(feature);
 
-        targetMapsSQLiteService.insertFeatures(targetMap, feature);
+        if (featureFilter(feature)) {
+          targetMapsSQLiteService.insertFeatures(targetMap, feature);
+        }
 
         return cb();
       }),

@@ -10,6 +10,10 @@ const cliArgsSpec = {
   data_dir: {
     demand: true,
     type: 'string'
+  },
+  county: {
+    demand: false,
+    type: 'string'
   }
 };
 
@@ -22,10 +26,17 @@ const { argv } = yargs
   .wrap(yargs.terminalWidth() / 1.618)
   .option(cliArgsSpec);
 
-const { data_dir } = argv;
+const { data_dir, county } = argv;
+
+const COUNTY = county ? county.toUpperCase() : null;
 
 const getFeatureId = ({ properties: { gis_id, beg_mp } }) =>
   `${gis_id}##${beg_mp}`;
+
+const featureFilter = COUNTY
+  ? ({ properties: { county_name: c } }) =>
+      c && c.replace(/[^A-Z ]/i, '').toUpperCase() === COUNTY
+  : () => true;
 
 const dataDirAbs = isAbsolute(data_dir)
   ? data_dir
@@ -55,7 +66,8 @@ const ignoreAllFilesExceptYearNDJSON = (file, stats) => {
       await loadFeaturesFromGZippedNDSJON({
         targetMap,
         filePath,
-        getFeatureId
+        getFeatureId,
+        featureFilter
       });
     }
   } catch (err) {

@@ -2,6 +2,7 @@
 
 /* eslint no-restricted-syntax: 0 */
 
+const { mkdirSync } = require('fs');
 const { join } = require('path');
 
 const _ = require('lodash');
@@ -13,6 +14,8 @@ const getGeoProximityKeyPrefix = require('../../utils/getGeoProximityKeyPrefix')
 const SQLITE_PATH = join(__dirname, '../../../data/sqlite/');
 
 const TARGET_MAPS_SQLITE_PATH = join(SQLITE_PATH, 'target_maps');
+
+mkdirSync(SQLITE_PATH, { recursive: true });
 
 const db = new Database(TARGET_MAPS_SQLITE_PATH);
 
@@ -179,18 +182,18 @@ const getFeatureQueryForTargetMap = targetMap => {
 };
 
 const getFeature = (targetMap, id) => {
-  const query = getFeatureQueryForTargetMap(targetMap)
+  const query = getFeatureQueryForTargetMap(targetMap);
 
-  const [strFeature] = query.raw().get(id)
+  const [strFeature] = query.raw().get(id);
 
   if (!strFeature) {
-    return null
+    return null;
   }
 
-  const feature = JSON.parse(strFeature)
+  const feature = JSON.parse(strFeature);
 
-  return feature
-}
+  return feature;
+};
 
 module.exports = {
   getTargetMapsList,
