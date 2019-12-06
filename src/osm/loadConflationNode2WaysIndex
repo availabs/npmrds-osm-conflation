@@ -1,0 +1,81 @@
+#!/usr/bin/env node
+
+/* eslint no-param-reassign: 0, no-restricted-syntax: 0, no-await-in-loop: 0 */
+
+const { mkdirSync } = require('fs');
+const { join } = require('path');
+
+const levelup = require('levelup');
+const leveldown = require('leveldown');
+const encode = require('encoding-down');
+
+const conflationOsmSQLiteService = require('../services/conflationOsmSQLiteService');
+
+const dbsParentDir = join(__dirname, '../../data/leveldb/');
+
+mkdirSync(dbsParentDir, { recursive: true });
+
+const JSON_ENC = { valueEncoding: 'json' };
+
+const CONFLATION_NODES2WAYS_DIR = join(dbsParentDir, 'conflationNodes2Ways');
+
+const conflationNodes2WaysDB = levelup(
+  encode(leveldown(CONFLATION_NODES2WAYS_DIR), JSON_ENC)
+);
+
+/*
+  const conflationWay = {
+    id,
+    nodes: nodeIds,
+    tags: { ... }
+  };
+*/
+
+const loadNodes2Ways = async () => {
+  const iterator = conflationOsmSQLiteService.makeWaysIterator();
+
+  for (const { id: wayId, nodes: nodeIds } of iterator) {
+    // For each node, record the index of the node within the way.
+    // NOTE: We could potentially record distance along for the node.
+    const node2WaysArray = await Promise.all(
+      nodeIds.map(async (nodeId, nodeIdx) => {
+        let node2Ways = {};
+
+        try {
+          // Get this node's ways info object if it exists.
+          node2Ways = await conflationNodes2WaysDB.get(nodeId);
+        } catch (err) {
+          // First occurance of node. Initialize this node's ways info object.
+          node2Ways = {};
+        }
+
+        // NOTE: Nodes can occur more than once within a given way.
+        node2Ways[wayId] = node2Ways[wayId] || [];
+        node2Ways[wayId].push(nodeIdx);
+
+        return {
+          type: 'put',
+          key: nodeId,
+          value: node2Ways
+        };
+      })
+    );
+
+    try {
+      // Write the collected info back to the database.
+      await conflationNodes2WaysDB.batch(node2WaysArray);
+    } catch (err) {
+      console.error('ERROR in batch put');
+      throw err;
+    }
+  }
+};
+
+(async () => {
+  try {
+    await loadNodes2Ways();
+  } catch (err) {
+    console.error(err);
+    process.exit(1);
+  }
+})();

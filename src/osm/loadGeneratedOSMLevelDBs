@@ -1,0 +1,303 @@
+#!/usr/bin/env node
+
+/* eslint no-continue: 0, no-restricted-syntax: 0, no-param-reassign: 0, */
+
+const _ = require('lodash');
+
+const { readFileSync } = require('fs');
+const { join } = require('path');
+const turf = require('@turf/turf');
+const targetMapsSQLiteService = require('../services/targetMapsSQLiteService');
+const shstTilesetSQLiteService = require('../services/shstTilesetSQLiteService');
+const conflationMapSQLiteService = require('../services/conflationMapSQLiteService');
+const rawOsmSQLiteService = require('../services/rawOsmSQLiteService');
+const conflationOsmSQLiteService = require('../services/conflationOsmSQLiteService');
+
+// ALBANY Subset filtering
+
+const {
+  features: [albanyPoly]
+} = JSON.parse(
+  readFileSync(join(__dirname, './albany_bounding_polygon.geojson'))
+);
+
+const isInAlbany = feature => turf.booleanContains(albanyPoly, feature);
+
+const targetMapNamesList = targetMapsSQLiteService.getTargetMapsList();
+
+let nodeIdSeq = 0;
+let maxWayId = 0;
+
+const seenShstRefIds = new Set();
+
+nodeIdSeq = 999366860;
+const loadOSMNodes = () => {
+  const iterator = shstTilesetSQLiteService.makeGeometryMetadataIterator();
+
+  for (const { geometryFeature, metadata } of iterator) {
+    if (!isInAlbany(geometryFeature)) {
+      continue;
+    }
+
+    const { geometry: { coordinates = null } = {} } = geometryFeature || {};
+
+    const { osmMetadata: { waySections = null } = {} } = metadata || {};
+
+    const nodeIds = _(waySections)
+      .map('nodeIds')
+      .flatten()
+      .value()
+      .reduce((acc, nodeId) => {
+        if (nodeId !== _.last(acc)) {
+          acc.push(nodeId);
+        }
+        return acc;
+      }, []);
+
+    nodeIdSeq = Math.max(nodeIdSeq, ...nodeIds);
+
+    if (nodeIds.length !== coordinates.length) {
+      throw new Error(
+        'ERROR: INVARIANT BROKEN. Number of nodeIds !== number of geometry vertices.'
+      );
+    }
+
+    for (let i = 0; i < nodeIds.length; ++i) {
+      const id = nodeIds[i];
+      const [lon, lat] = coordinates[i];
+
+      conflationOsmSQLiteService.insertNode({ id, lon, lat });
+    }
+  }
+};
+
+const validateMatchedWay = feature => {
+  const {
+    properties: {
+      osmMetadata: { waySection: { nodeIds = null } = {} } = {}
+    } = {},
+    geometry: { coordinates = null } = {}
+  } = feature || {};
+
+  if (!Array.isArray(nodeIds)) {
+    throw new Error(
+      'ERROR: INVARIANT BROKEN. No OSM nodeIds for split ShSt Reference'
+    );
+  }
+
+  if (!Array.isArray(coordinates)) {
+    throw new Error(
+      'ERROR: INVARIANT BROKEN. No coordinates for split ShSt Reference'
+    );
+  }
+
+  if (nodeIds.length !== coordinates.length) {
+    throw new Error(
+      'ERROR: INVARIANT BROKEN. Number of OSM nodeIds !== number of vertices in geometry.'
+    );
+  }
+
+  if (nodeIds.slice(1, -1).some(nodeId => nodeId === null)) {
+    throw new Error(
+      'ERROR: INVARIANT BROKEN. Internal nodes/vertices can not be synthetic (created during splitting).'
+    );
+  }
+};
+
+// Need to insert ways that were not paired to NPMRDS or RIS.
+const loadMatchedWays = () => {
+  const iterator = conflationMapSQLiteService.makeConflationMapFeatureIterator();
+
+  for (const conflationOutputFeature of iterator) {
+    if (!isInAlbany(conflationOutputFeature)) {
+      continue;
+    }
+
+    try {
+      validateMatchedWay(conflationOutputFeature);
+    } catch (err) {
+      console.error(err);
+      continue;
+    }
+
+    const {
+      id: conflationMapId,
+      properties: {
+        osm: rawOsmWayId,
+        osmMetadata: { waySection: { nodeIds = null } = {} } = {}
+      } = {},
+      geometry: { coordinates = null } = {}
+    } = conflationOutputFeature || {};
+
+    const [shstRefId] = conflationMapId.split('|');
+    seenShstRefIds.add(shstRefId);
+
+    // If node/vertex was added to shstRefernceGeometry for splitting
+    if (_.first(nodeIds) === null) {
+      const [lon, lat] = _.first(coordinates);
+
+      let id = conflationOsmSQLiteService.getNodeIdByCoordinates({ lon, lat });
+
+      if (id !== null) {
+        nodeIds[0] = id;
+      } else {
+        id = Math.floor(++nodeIdSeq);
+        conflationOsmSQLiteService.insertNode({ id, lon, lat });
+        nodeIds[0] = id;
+      }
+    }
+
+    // If node/vertex was added to shstRefernceGeometry for splitting
+    if (_.last(nodeIds) === null) {
+      const [lon, lat] = _.last(coordinates);
+      const lastNodeIdx = nodeIds.length - 1;
+
+      let id = conflationOsmSQLiteService.getNodeIdByCoordinates({ lon, lat });
+
+      if (id !== null) {
+        nodeIds[
+          lastNodeIdx
+        ] = conflationOsmSQLiteService.getNodeIdByCoordinates({ lon, lat });
+      } else {
+        id = Math.floor(++nodeIdSeq);
+        conflationOsmSQLiteService.insertNode({ id, lon, lat });
+        nodeIds[lastNodeIdx] = id;
+      }
+    }
+
+    const rawOsmWay = rawOsmSQLiteService.getWayById(rawOsmWayId);
+    const rawOsmWayMetadata = rawOsmWay && _.omit(rawOsmWay.tags, ['oneway']);
+
+    const matchedTargetMapIds = _.pick(
+      conflationOutputFeature.properties,
+      targetMapNamesList
+    );
+
+    const id = ++maxWayId;
+
+    const conflationWay = {
+      id,
+      nodes: nodeIds,
+      rawOsmWayId,
+      tags: Object.assign(
+        {},
+        rawOsmWayMetadata,
+        _.mapKeys(
+          _.omit(conflationOutputFeature.properties, [
+            'osmMetadata',
+            'fsystem',
+            'oneway',
+            'oneWay'
+          ]),
+          (v, k) => `sharedstreets:${k}`
+        ),
+        matchedTargetMapIds,
+        { oneway: 'yes' }
+      )
+    };
+
+    conflationOsmSQLiteService.insertWay(conflationWay);
+  }
+};
+
+const loadUnmatchedWays = () => {
+  const iterator = shstTilesetSQLiteService.makeShStReferenceFeatureIterator();
+
+  for (const shstReferenceFeature of iterator) {
+    if (!isInAlbany(shstReferenceFeature)) {
+      continue;
+    }
+    const {
+      id: shstRefId,
+      properties: { osmMetadata: { waySections } } = {}
+    } = shstReferenceFeature;
+
+    if (seenShstRefIds.has(shstRefId)) {
+      continue;
+    }
+
+    seenShstRefIds.add(shstRefId);
+
+    if (!Array.isArray(waySections)) {
+      continue;
+    }
+
+    for (let i = 0; i < waySections.length; ++i) {
+      const waySection = waySections[i];
+      const { nodeIds, wayId: rawOsmWayId } = waySection;
+
+      const rawOsmWay = rawOsmSQLiteService.getWayById(rawOsmWayId);
+      const rawOsmWayMetadata = rawOsmWay && _.omit(rawOsmWay.tags, ['oneway']);
+
+      const id = ++maxWayId;
+
+      const conflationWay = {
+        id,
+        nodes: nodeIds,
+        rawOsmWayId,
+        tags: Object.assign(
+          {},
+          rawOsmWayMetadata,
+          { osm: rawOsmWayId },
+          { oneway: 'yes' }
+        )
+      };
+
+      conflationOsmSQLiteService.insertWay(conflationWay);
+    }
+  }
+};
+
+// TODO: Show that Shst did not mutate the underlying OSM nodes for the shst intersections.
+const loadRestrictions = () => {
+  let restrictionIdSeq = 0;
+
+  const iterator = rawOsmSQLiteService.makeRestrictionsIterator();
+
+  for (const { members: rawRestrictionMembers, restriction } of iterator) {
+    if (_.isNil(rawRestrictionMembers) || _.isNil(restriction)) {
+      continue;
+    }
+
+    const {
+      from: rawFromWayId,
+      via: rawViaNodeId,
+      to: rawToWayId
+    } = rawRestrictionMembers;
+
+    if (_.isNil(rawFromWayId) || _.isNil(rawViaNodeId) || _.isNil(rawToWayId)) {
+      continue;
+    }
+
+    const conflationFromWayId = conflationOsmSQLiteService.getWayIdByEndNodeAndRawOsmWayId(
+      {
+        rawOsmWayId: rawFromWayId,
+        endNode: rawViaNodeId
+      }
+    );
+
+    const conflationToWayId = conflationOsmSQLiteService.getWayIdByStartNodeAndRawOsmWayId(
+      {
+        rawOsmWayId: rawToWayId,
+        startNode: rawViaNodeId
+      }
+    );
+
+    if (!_.isNil(conflationFromWayId) && !_.isNil(conflationToWayId)) {
+      conflationOsmSQLiteService.insertRestriction({
+        id: ++restrictionIdSeq,
+        members: {
+          from: conflationFromWayId,
+          via: rawViaNodeId,
+          to: conflationToWayId
+        },
+        restriction
+      });
+    }
+  }
+};
+
+loadOSMNodes();
+loadMatchedWays();
+loadUnmatchedWays();
+loadRestrictions();

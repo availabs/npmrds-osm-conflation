@@ -1,0 +1,113 @@
+#!/usr/bin/env node
+
+// https://wiki.openstreetmap.org/wiki/Way#Examples
+//   The nodes defining the geometry of the way are enumerated in the correct order,
+//     and indicated only by reference using their unique identifier.
+//   These nodes must have been already defined separately with their coordinates.
+//
+// https://wiki.openstreetmap.org/wiki/Relation:restriction
+
+const { createReadStream } = require('fs');
+
+const yargs = require('yargs');
+const XmlStream = require('xml-stream');
+const rawOsmSQLiteService = require('../services/rawOsmSQLiteService');
+
+const cliArgsSpec = {
+  osmFile: {
+    demand: true,
+    type: 'string'
+  }
+};
+
+const { argv } = yargs
+  .strict()
+  .parserConfiguration({
+    'camel-case-expansion': false,
+    'flatten-duplicate-arrays': false
+  })
+  .wrap(yargs.terminalWidth() / 1.618)
+  .option(cliArgsSpec);
+
+const { osmFile } = argv;
+
+const loadNode = d => {
+  const {
+    $: { id, lat, lon },
+    tag
+  } = d;
+
+  const tags = Array.isArray(tag)
+    ? tag.reduce((acc, { $: { k, v } }) => {
+        acc[k] = v;
+        return acc;
+      }, {})
+    : null;
+
+  rawOsmSQLiteService.insertNode({ id, lat: +lat, lon: +lon, tags });
+};
+
+const loadRestriction = d => {
+  const { member, tag } = d;
+
+  const tags = Array.isArray(tag)
+    ? tag.reduce((acc, { $: { k, v } }) => {
+        acc[k] = v;
+        return acc;
+      }, {})
+    : null;
+
+  if (tags && tags.type === 'restriction') {
+    const { restriction } = tags;
+
+    const members = member.reduce((acc, { $: { ref = null, role = null } }) => {
+      if (ref !== null && role !== null) {
+        acc[role] = ref;
+      }
+
+      return acc;
+    }, {});
+
+    const nodeId = members.via || null;
+
+    if (nodeId === null) {
+      return;
+    }
+
+    rawOsmSQLiteService.insertRestriction({ nodeId, members, restriction });
+  }
+};
+
+const loadWay = d => {
+  const {
+    $: { id },
+    nd,
+    tag
+  } = d;
+
+  const nodes = Array.isArray(nd) ? nd.map(({ $: { ref } }) => ref) : null;
+
+  const tags = Array.isArray(tag)
+    ? tag.reduce((acc, { $: { k, v } }) => {
+        acc[k] = v;
+        return acc;
+      }, {})
+    : null;
+
+  rawOsmSQLiteService.insertWay({ id, nodes, tags });
+};
+
+const osmStream = createReadStream(osmFile);
+
+const xml = new XmlStream(osmStream);
+
+xml.collect('node tag');
+xml.on('endElement: node', loadNode);
+
+xml.collect('relation member');
+xml.collect('relation tag');
+xml.on('endElement: relation', loadRestriction);
+
+xml.collect('way nd');
+xml.collect('way tag');
+xml.on('endElement: way', loadWay);

@@ -47,6 +47,18 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS shst_reference_idx
     ON shst_reference(id);
 
+  CREATE VIEW IF NOT EXISTS shst_geom_meta_join_view (
+    geom_feature,
+    metadata
+  ) AS
+    SELECT
+        g.feature,
+        m.metadata
+      FROM shst_geometry AS g
+        INNER JOIN shst_metadata AS m
+          ON ( g.id == m.geometry_id )
+  ;
+
   CREATE VIEW IF NOT EXISTS shst_ref_geom_meta_join_view (
     shst_reference_id,
     geom_feature,
@@ -199,6 +211,25 @@ const insertReferences = references => {
 };
 
 // Prepared statement for joining db tables for shstReference Feature iterator creation.
+const shstGeometryMetadataIteratorQuery = db.prepare(`
+  SELECT
+      geom_feature,
+      metadata
+    FROM shst_geom_meta_join_view
+`);
+
+function* makeGeometryMetadataIterator() {
+  const iterator = shstGeometryMetadataIteratorQuery.iterate();
+
+  for (const { geom_feature, metadata } of iterator) {
+    yield {
+      geometryFeature: geom_feature ? JSON.parse(geom_feature) : null,
+      metadata: metadata ? JSON.parse(metadata) : null
+    };
+  }
+}
+
+// Prepared statement for joining db tables for shstReference Feature iterator creation.
 const shstReferenceFeatureIteratorQuery = db.prepare(`
   SELECT
       shst_reference_id,
@@ -218,5 +249,6 @@ module.exports = {
   insertGeometries,
   insertMetadata,
   insertReferences,
+  makeGeometryMetadataIterator,
   makeShStReferenceFeatureIterator
 };
