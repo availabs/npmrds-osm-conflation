@@ -1,43 +1,62 @@
 #!/usr/bin/env node
 
-/* eslint no-param-reassign: 0, no-restricted-syntax: 0 */
+/* eslint no-param-reassign: 0, no-restricted-syntax: 0, no-await-in-loop: 0 */
 
 const conflationOsmSQLiteService = require('../services/conflationOsmSQLiteService');
 
-const outputNodes = () => {
+// This script was crashing because of Heap out of memory.
+//   Using the V8 inspector it became clear that an Array of TickObjects was the cause.
+//
+//   I found this StackOverflow post: https://stackoverflow.com/a/34278415
+//
+//   >  On each write, an afterWrite clean up function is being queued up as a TickObject each time.
+//   >  As we never leave the Tick/context we're in, this just amass till node explodes.
+//   >  Solution? Make any long/forever running code blocks asynchronous with ticks as well.
+//
+// The solution wihin this module:
+const tickContextBreaker = () => new Promise(resolve => process.nextTick(resolve))
+
+const outputNodes = async () => {
   const iterator = conflationOsmSQLiteService.makeNodesIterator();
 
   for (const { id, lon, lat } of iterator) {
-    process.stdout.write(`
-  <node id="${id}" version="-1" timestamp="1969-12-31T23:59:59Z" changeset="-1" lat="${lat}" lon="${lon}"/>`);
+    console.log(
+      `  <node id="${id}" version="-1" timestamp="1969-12-31T23:59:59Z" changeset="-1" lat="${lat}" lon="${lon}"/>`
+    );
+    await tickContextBreaker()
   }
 };
 
-const outputRestrictions = () => {
+const outputRestrictions = async () => {
   const iterator = conflationOsmSQLiteService.makeRestrictionsIterator();
 
-  for (const { id, via, to, from, restriction } of iterator) {
-    process.stdout.write(`
-  <relation id="${id}" version="-1" timestamp="1969-12-31T23:59:59Z" changeset="-1">
+  for (const {
+    id,
+    members: { via, to, from },
+    restriction
+  } of iterator) {
+    console.log(`  <relation id="${id}" version="-1" timestamp="1969-12-31T23:59:59Z" changeset="-1">
     <member type="node" ref="${via}" role="via"/>
     <member type="way" ref="${to}" role="to"/>
     <member type="way" ref="${from}" role="from"/>
     <tag k="type" v="restriction"/>
     <tag k="restriction" v="${restriction}"/>
   </relation>`);
+
+    await tickContextBreaker()
   }
 };
 
-const outputWays = () => {
+const outputWays = async () => {
   const iterator = conflationOsmSQLiteService.makeWaysIterator();
 
   for (const { id, nodes, tags } of iterator) {
-    process.stdout.write(`
-  <way id="${id}" version="-1" timestamp="1969-12-31T23:59:59Z" changeset="-1">`);
+    console.log(
+      `  <way id="${id}" version="-1" timestamp="1969-12-31T23:59:59Z" changeset="-1">`
+    );
 
     for (let i = 0; i < nodes.length; ++i) {
-      process.stdout.write(`
-    <nd ref="${nodes[i]}"/>`);
+      console.log(`    <nd ref="${nodes[i]}"/>`);
     }
 
     Object.keys(tags).forEach(k => {
@@ -45,22 +64,22 @@ const outputWays = () => {
       if (typeof v === 'string') {
         v = v.replace(/<|>|&|"/g, '');
       }
-      process.stdout.write(`
-    <tag k="${k}" v="${v}"/>`);
+      console.log(`    <tag k="${k}" v="${v}"/>`);
     });
 
-    process.stdout.write(`
-  </way>`);
+    console.log(`  </way>`);
+    await tickContextBreaker()
   }
 };
 
-process.stdout.write(`<?xml version="1.0" encoding="UTF-8"?>
-<osm version="0.6" generator="AVAIL Network Conflation Tool">
-  <bounds minlon="-74.26890" minlat="42.41979" maxlon="-73.67937" maxlat="42.82377" origin="http://www.openstreetmap.org/api/0.6"/>`);
+(async () => {
+  console.log(`<?xml version="1.0" encoding="UTF-8"?>
+  <osm version="0.6" generator="AVAIL Network Conflation Tool">
+    <bounds minlon="-74.26890" minlat="42.41979" maxlon="-73.67937" maxlat="42.82377" origin="http://www.openstreetmap.org/api/0.6"/>`);
 
-outputNodes();
-outputRestrictions();
-outputWays();
+  await outputNodes();
+  await outputRestrictions();
+  await outputWays();
 
-process.stdout.write(`
-</osm>`);
+  console.log(`</osm>`);
+})()

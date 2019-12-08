@@ -72,6 +72,7 @@ const insertConflationMapFeatures = features => {
 const conflationMapFeatureIteratorQuery = db.prepare(`
   SELECT feature
     FROM conflation_map
+    ORDER BY id
 `);
 
 function* makeConflationMapFeatureIterator() {
