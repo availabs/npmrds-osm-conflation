@@ -103,7 +103,7 @@ const createBackReferenceFeature = (geomFeature, osmMetadata) => {
 
 class ShStReferenceFeaturesIterator {
   constructor(iterator) {
-    this[Symbol.iterator] = function* asyncIteratorFn() {
+    this[Symbol.iterator] = function* iteratorFn() {
       let prevShStRefId = null;
 
       const shstRefCandidates = [];

@@ -62,7 +62,7 @@ const shstMatchInputStatement = db.prepare(`
 `);
 
 // INSERT the shst match output
-const putFeatures = matchFeatures => {
+const insertFeatures = matchFeatures => {
   if (!(matchFeatures && matchFeatures.length)) {
     return;
   }
@@ -283,7 +283,7 @@ const getMaxMatchedSegmentGeoProximityKeyForTargetMap = targetMap => {
 };
 
 module.exports = {
-  putFeatures,
+  insertFeatures,
   makeTargetMapFeatureIterator,
   makeMatchFeaturesForShstReferenceByTargetMapIterator,
   makeAllMatchedFeaturesIterator,
