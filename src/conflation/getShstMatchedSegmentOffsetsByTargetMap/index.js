@@ -2,6 +2,8 @@
 
 /* eslint no-continue: 0, no-param-reassign: 0 */
 
+const _ = require('lodash');
+
 const { OSM } = require('../constants');
 
 const getOffsetsAlongShstRefForTargetMapSegments = require('./getOffsetsAlongShstRefForTargetMapSegments');
@@ -14,24 +16,26 @@ const getShstMatchedSegmentOffsetsByTargetMap = ({
 }) => {
   const shstMatchedSegmentOffsetsByTargetMap = {};
 
-  const targetMaps = Object.keys(shstMatchesByTargetMap);
+  if (!_.isNil(shstMatchesByTargetMap)) {
+    const targetMaps = Object.keys(shstMatchesByTargetMap);
 
-  for (let i = 0; i < targetMaps.length; ++i) {
-    const targetMap = targetMaps[i];
+    for (let i = 0; i < targetMaps.length; ++i) {
+      const targetMap = targetMaps[i];
 
-    const shstMatches = shstMatchesByTargetMap[targetMap].filter(
-      ({ properties: { targetMapIsPrimary } }) => targetMapIsPrimary
-    );
+      const shstMatches = shstMatchesByTargetMap[targetMap].filter(
+        ({ properties: { targetMapIsPrimary } }) => targetMapIsPrimary
+      );
 
-    const segmentOffsetsList = getOffsetsAlongShstRefForTargetMapSegments({
-      shstReferenceFeature,
-      shstReferenceAuxProperties,
-      shstMatches,
-      targetMap
-    });
+      const segmentOffsetsList = getOffsetsAlongShstRefForTargetMapSegments({
+        shstReferenceFeature,
+        shstReferenceAuxProperties,
+        shstMatches,
+        targetMap
+      });
 
-    if (segmentOffsetsList) {
-      shstMatchedSegmentOffsetsByTargetMap[targetMap] = segmentOffsetsList;
+      if (segmentOffsetsList) {
+        shstMatchedSegmentOffsetsByTargetMap[targetMap] = segmentOffsetsList;
+      }
     }
   }
 

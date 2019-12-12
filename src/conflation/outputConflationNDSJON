@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-/* eslint no-restricted-syntax: 0 */
+/* eslint no-restricted-syntax: 0, no-await-in-loop: 0 */
 
 // https://github.com/sharedstreets/sharedstreets-ref-system#core-concepts
 
@@ -8,70 +8,69 @@ const conflationMapSQLiteService = require('../services/conflationMapSQLiteServi
 
 const { shstOsmWayRoadClassRankings } = require('./constants');
 
-let outputFeatureId = 0;
-
 const iterator = conflationMapSQLiteService.makeConflationMapFeatureIterator();
 
-for (const feature of iterator) {
-  const {
-    id: conflationMapFeatureId,
-    properties: {
-      osm,
-      npmrds_2017,
-      npmrds_2019,
-      ris_2019,
-      segmentIndex,
-      totalSegments,
-      osmMetadata
+(async () => {
+  for (const feature of iterator) {
+    const {
+      id: conflationMapFeatureId,
+      properties: {
+        osm,
+        npmrds_2017,
+        npmrds_2019,
+        ris_2019,
+        segmentIndex,
+        totalSegments,
+        osmMetadata
+      }
+    } = feature;
+
+    const { roadClass = 'Other', oneWay = false } = osmMetadata || {};
+
+    let networklevel = shstOsmWayRoadClassRankings[roadClass];
+
+    if (oneWay) {
+      networklevel += 0.5;
     }
-  } = feature;
 
-  feature.id = ++outputFeatureId;
+    feature.properties = {
+      id: conflationMapFeatureId,
+      osm,
+      split_seg: `${segmentIndex}:${totalSegments}`,
+      networklevel
+    };
 
-  const { roadClass = 'Other', oneWay = false } = osmMetadata || {};
+    if (npmrds_2017) {
+      feature.properties.tmc_2017 = npmrds_2017;
 
-  let networklevel = shstOsmWayRoadClassRankings[roadClass];
+      feature.properties.tmc2017idx =
+        conflationMapSQLiteService.getConflationMapSegIndexForTargetMapSegment(
+          'npmrds_2017',
+          conflationMapFeatureId
+        ) || null;
+    }
 
-  if (oneWay) {
-    networklevel += 0.5;
+    if (npmrds_2019) {
+      feature.properties.tmc_2019 = npmrds_2019;
+
+      feature.properties.tmc2019idx =
+        conflationMapSQLiteService.getConflationMapSegIndexForTargetMapSegment(
+          'npmrds_2019',
+          conflationMapFeatureId
+        ) || null;
+    }
+
+    if (ris_2019) {
+      feature.properties.ris_2019 = ris_2019.replace(/##/g, '|');
+
+      feature.properties.ris2019idx =
+        conflationMapSQLiteService.getConflationMapSegIndexForTargetMapSegment(
+          'ris_2019',
+          conflationMapFeatureId
+        ) || null;
+    }
+
+    console.log(JSON.stringify(feature));
+    await new Promise(resolve => process.nextTick(resolve));
   }
-
-  feature.properties = {
-    id: feature.id,
-    osm,
-    split_seg: `${segmentIndex}:${totalSegments}`,
-    networklevel
-  };
-
-  if (npmrds_2017) {
-    feature.properties.tmc_2017 = npmrds_2017;
-
-    feature.properties.tmc2017idx =
-      conflationMapSQLiteService.getConflationMapSegIndexForTargetMapSegment(
-        'npmrds_2017',
-        conflationMapFeatureId
-      ) || null;
-  }
-
-  if (npmrds_2019) {
-    feature.properties.tmc_2019 = npmrds_2019;
-
-    feature.properties.tmc2019idx =
-      conflationMapSQLiteService.getConflationMapSegIndexForTargetMapSegment(
-        'npmrds_2019',
-        conflationMapFeatureId
-      ) || null;
-  }
-
-  if (ris_2019) {
-    feature.properties.ris_2019 = ris_2019.replace(/##/g, '|');
-
-    feature.properties.ris2019idx =
-      conflationMapSQLiteService.getConflationMapSegIndexForTargetMapSegment(
-        'ris_2019',
-        conflationMapFeatureId
-      ) || null;
-  }
-
-  console.log(JSON.stringify(feature));
-}
+})();

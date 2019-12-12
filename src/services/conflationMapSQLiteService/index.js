@@ -9,6 +9,7 @@ const _ = require('lodash');
 const Database = require('better-sqlite3');
 
 const SQLITE_PATH = join(__dirname, '../../../data/sqlite/');
+// const SQLITE_PATH = join(__dirname, '../../../tmpsqlite');
 
 const CONFLATION_MAP_SQLITE_PATH = join(SQLITE_PATH, 'conflation_map');
 
@@ -26,7 +27,7 @@ db.exec(`
   BEGIN;
 
   CREATE TABLE IF NOT EXISTS conflation_map (
-    id       TEXT PRIMARY KEY,
+    id       INTEGER PRIMARY KEY,
     feature  TEXT NOT NULL --JSON
   ) WITHOUT ROWID;
 
@@ -72,7 +73,6 @@ const insertConflationMapFeatures = features => {
 const conflationMapFeatureIteratorQuery = db.prepare(`
   SELECT feature
     FROM conflation_map
-    ORDER BY id
 `);
 
 function* makeConflationMapFeatureIterator() {
@@ -89,7 +89,7 @@ const createTempConflationMapSegIndexForTargetMapSegLookupTable = tblName => {
     BEGIN;
 
     CREATE TABLE IF NOT EXISTS ${tblName} (
-      conflation_map_id   TEXT PRIMARY KEY,
+      conflation_map_id   INTEGER PRIMARY KEY,
       target_map_seg_idx  INTEGER NOT NULL
     ) WITHOUT ROWID ;
 
@@ -182,16 +182,20 @@ function* makeConflationMapIdsGroupedByTargetMapSegmentsIterator(targetMap) {
   const q = db.prepare(`
     SELECT
         JSON_EXTRACT(feature, '$.properties.${targetMap}'),
-        GROUP_CONCAT(id)
+        GROUP_CONCAT( feature )
       FROM conflation_map
-      WHERE ( JSON_EXTRACT(feature, '$.properties.${targetMap}') IS NOT NULL )
-      GROUP BY 1 ;`);
+      WHERE (
+        JSON_EXTRACT(feature, '$.properties.${targetMap}') IS NOT NULL
+      )
+      GROUP BY 1 ;
+  `);
 
   const iterator = q.raw().iterate();
 
-  for (const [targetMapId, conflationMapIdsStr] of iterator) {
-    const conflationMapIds = conflationMapIdsStr.split(',');
-    yield { targetMapId, conflationMapIds };
+  for (const [targetMapId, strConflationMapFeatures] of iterator) {
+    const conflationMapFeatures = JSON.parse(`[${strConflationMapFeatures}]`);
+
+    yield { targetMapId, conflationMapFeatures };
   }
 }
 

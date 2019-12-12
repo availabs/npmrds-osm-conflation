@@ -14,7 +14,8 @@ const conflationOsmSQLiteService = require('../services/conflationOsmSQLiteServi
 //   >  Solution? Make any long/forever running code blocks asynchronous with ticks as well.
 //
 // The solution wihin this module:
-const tickContextBreaker = () => new Promise(resolve => process.nextTick(resolve))
+const tickContextBreaker = () =>
+  new Promise(resolve => process.nextTick(resolve));
 
 const outputNodes = async () => {
   const iterator = conflationOsmSQLiteService.makeNodesIterator();
@@ -23,7 +24,7 @@ const outputNodes = async () => {
     console.log(
       `  <node id="${id}" version="-1" timestamp="1969-12-31T23:59:59Z" changeset="-1" lat="${lat}" lon="${lon}"/>`
     );
-    await tickContextBreaker()
+    await tickContextBreaker();
   }
 };
 
@@ -43,7 +44,7 @@ const outputRestrictions = async () => {
     <tag k="restriction" v="${restriction}"/>
   </relation>`);
 
-    await tickContextBreaker()
+    await tickContextBreaker();
   }
 };
 
@@ -68,7 +69,7 @@ const outputWays = async () => {
     });
 
     console.log(`  </way>`);
-    await tickContextBreaker()
+    await tickContextBreaker();
   }
 };
 
@@ -82,4 +83,4 @@ const outputWays = async () => {
   await outputWays();
 
   console.log(`</osm>`);
-})()
+})();

@@ -2,13 +2,12 @@
 
 const _ = require('lodash');
 
-const targetMapsSQLiteService = require('../../services/targetMapsSQLiteService');
 const shstMatchesSQLiteService = require('../../services/shstMatchesSQLiteService');
 const conflationMapSQLiteService = require('../../services/conflationMapSQLiteService');
 
 const splitSegsComparator = (a, b) => {
-  const aIdx = +a.properties.segmentIndex;
-  const bIdx = +b.properties.segmentIndex;
+  const aIdx = +a.split('|')[1];
+  const bIdx = +b.split('|')[1];
 
   return aIdx - bIdx;
 };
@@ -22,21 +21,19 @@ function initializeConflationMapSegIdxLookupTableForTargetMap(targetMap) {
     targetMap
   );
 
-  for (const { targetMapId, conflationMapFeatures } of iterator) {
+  for (const { targetMapId, conflationMapIds } of iterator) {
     try {
-      const { chains } = shstMatchesSQLiteService.getShstReferenceChains(
+      // console.error('='.repeat(25));
+
+      const {
+        shstNetEdges,
+        chains
+      } = shstMatchesSQLiteService.getShstReferenceChains(
         targetMap,
         targetMapId
       );
 
-      if (!chains || chains.length === 0) {
-        console.log(
-          JSON.stringify({
-            msg: 'NO_CHAINS',
-            targetMap,
-            targetMapId
-          })
-        );
+      if (!chains) {
         continue;
       }
 
@@ -63,26 +60,21 @@ function initializeConflationMapSegIdxLookupTableForTargetMap(targetMap) {
 
         chains.length = 0;
         chains.push(...pairwiseChains.slice(0, 2));
-      } else if (chains.length === 2 && _.intersection(...chains).length > 0) {
-        if (chains[0].length > chains[1].length) {
-          chains.pop();
-        } else {
-          chains.shift();
-        }
       }
 
       const conflationMapSegChains = chains.map(chain =>
         _.flatten(
           chain.map(shstReferenceId =>
-            conflationMapFeatures
-              .filter(
-                ({ properties: { shstRefId } }) => shstRefId === shstReferenceId
-              )
+            conflationMapIds
+              .filter(cmId => cmId.startsWith(shstReferenceId))
               .sort(splitSegsComparator)
-              .map(({ id }) => id)
           )
         )
       );
+
+      // console.error(
+      // JSON.stringify({ conflationMapIds, conflationMapSegChains }, null, 4)
+      // );
 
       if (conflationMapSegChains.length === 2) {
         if (
@@ -111,7 +103,16 @@ function initializeConflationMapSegIdxLookupTableForTargetMap(targetMap) {
 
       conflationMapSQLiteService.insertConflationMapSegIndexesForTargetMapSegment(
         targetMap,
-        targetMapSegIndexes
+        targetMapSegIndexes,
+        {
+          targetMap,
+          targetMapId,
+          conflationMapIds,
+          shstNetEdges,
+          chains,
+          conflationMapSegChains,
+          targetMapSegIndexes
+        }
       );
     } catch (err) {
       // console.error(err);
@@ -120,16 +121,6 @@ function initializeConflationMapSegIdxLookupTableForTargetMap(targetMap) {
   }
 }
 
-function initializeConflationMapSegIdxLookupTables() {
-  const targetMaps = targetMapsSQLiteService.getTargetMapsList();
-
-  for (let i = 0; i < targetMaps.length; ++i) {
-    const targetMap = targetMaps[i];
-
-    initializeConflationMapSegIdxLookupTableForTargetMap(targetMap);
-  }
-}
-
 module.exports = {
-  initializeConflationMapSegIdxLookupTables
+  initializeConflationMapSegIdxLookupTableForTargetMap
 };

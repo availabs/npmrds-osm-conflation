@@ -7,8 +7,6 @@ const turfHelpers = require('@turf/helpers');
 
 const validateShstReferenceSplitting = require('./validateShstReferenceSplitting');
 
-const { getShstReferenceId } = require('../utils');
-
 const { OSM, IN_KILOMETERS } = require('../constants');
 
 const partitionShstReferenceByTargetMapsMatches = ({
@@ -16,8 +14,6 @@ const partitionShstReferenceByTargetMapsMatches = ({
   shstReferenceAuxProperties,
   shstMatchedSegmentOffsetsByTargetMap
 }) => {
-  const shstReferenceId = getShstReferenceId(shstReferenceFeature);
-
   const {
     osmWaySections,
     shstRefGeomLengthKm,
@@ -133,12 +129,9 @@ const partitionShstReferenceByTargetMapsMatches = ({
       endDist
     });
 
-    const id = `${shstReferenceId}|${segmentProperties.segmentIndex}|${segmentProperties.totalSegments}`;
-
     const segment = turfHelpers.lineString(
       segmentCoordinates,
-      segmentProperties,
-      { id }
+      segmentProperties
     );
 
     shstReferencePartitions.push(segment);
@@ -153,6 +146,9 @@ const partitionShstReferenceByTargetMapsMatches = ({
       targetMapId
     } = allMatchedSegmentsOffsets[i];
 
+    const tmsStart = _.round(tmsStartDist, 6);
+    const tmsEnd = _.round(tmsEndDist, 6);
+
     for (let j = 0; j < shstReferencePartitions.length; ++j) {
       const segment = shstReferencePartitions[j];
       const {
@@ -164,18 +160,15 @@ const partitionShstReferenceByTargetMapsMatches = ({
       if (
         // segment.properties[target_map] !== target_map_id &&
         // targetMapSeg begins before or at shstRefSubSegment beginning
-        tmsStartDist <= startDist &&
+        tmsStart <= startDist &&
         // targetMapSeg begins before shstRefSubSegment ending
-        tmsStartDist < endDist &&
+        tmsStart < endDist &&
         // targetMapSeg ends after shstRefSubSegment begins
-        tmsEndDist > startDist
+        tmsEnd > startDist
       ) {
         if (segment.properties[targetMap]) {
           // FIXME: Throw this
-          // throw new Error(
-          // 'INVARIANT BROKEN. More than one target_map segment per source map segment.'
-          // );
-          console.log(
+          console.error(
             'INVARIANT BROKEN. More than one target_map segment per source map segment.'
           );
         }
@@ -200,33 +193,10 @@ const partitionShstReferenceByTargetMapsMatches = ({
 
     if (wayId === null) {
       // FIXME: Throw here
-      console.log('ERROR: wayId === null');
-      // console.error(
-      // JSON.stringify(
-      // {
-      // shstReferenceFeature,
-      // shstReferenceAuxProperties,
-      // shstMatchedSegmentOffsetsByTargetMap,
-      // shstRefGeomLengthKm,
-      // shstReferenceId,
-      // allMatchedSegmentsOffsets,
-      // orderedSplitterOffsetsList
-      // },
-      // null,
-      // 4
-      // )
-      // );
-
-      // console.error(
-      // 'INVARIANT BROKEN: shstRef segment without a mapped OSM WayID'
-      // );
-      // FIXME: Throw this
-      // throw new Error(
-      // 'INVARIANT BROKEN: shstRef segment without a mapped OSM WayID'
-      // );
+      console.error('ERROR: wayId === null');
     }
 
-    const waySection = osmWaySectionsByWayIds[wayId];
+    const waySection = osmWaySectionsByWayIds[wayId] || null;
 
     Object.assign(
       segment.properties.osmMetadata,

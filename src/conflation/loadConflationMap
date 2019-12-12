@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 
-/* eslint no-restricted-syntax: 0, no-continue: 0 */
+/* eslint no-restricted-syntax: 0, no-continue: 0, no-await-in-loop: 0 */
 
-const _ = require('lodash');
-
-const dao = require('../daos/shstReferencesMatchesDAO');
+const shstReferencesMatchesDAO = require('../daos/shstReferencesMatchesDAO');
+const conflationMapDAO = require('../daos/conflationMapDAO');
 
 const getShstReferenceAuxProperties = require('./getShstReferenceAuxProperties');
 const getShstMatchedSegmentOffsetsByTargetMap = require('./getShstMatchedSegmentOffsetsByTargetMap');
@@ -13,19 +12,13 @@ const partitionShstReferenceByTargetMapsMatches = require('./partitionShstRefere
 
 const conflationMapSQLiteService = require('../services/conflationMapSQLiteService');
 
-(async () => {
-  const iterator = dao.makeShStReferenceFeatureWithMatchesAsyncIterator();
+const createPartitions = async () => {
+  let conflationMapFeatureId = 0;
 
-  for await (const {
-    shstReferenceFeature,
-    shstMatchesByTargetMap
-  } of iterator) {
-    const { id } = shstReferenceFeature;
+  const iterator = shstReferencesMatchesDAO.makeShStReferenceFeatureWithMatchesIterator();
 
-    // FIXME: We need to output this segment with just the OSM wayIds in this case.
-    if (_.isEmpty(shstMatchesByTargetMap)) {
-      continue;
-    }
+  for (const { shstReferenceFeature, shstMatchesByTargetMap } of iterator) {
+    const { id: shstRefId } = shstReferenceFeature;
 
     const shstReferenceAuxProperties = getShstReferenceAuxProperties(
       shstReferenceFeature
@@ -46,11 +39,28 @@ const conflationMapSQLiteService = require('../services/conflationMapSQLiteServi
     });
 
     if (shstReferencePartitions) {
+      // Assign IDs to the features.
+      for (let i = 0; i < shstReferencePartitions.length; ++i) {
+        const partition = shstReferencePartitions[i];
+
+        partition.id = ++conflationMapFeatureId;
+        partition.properties.shstRefId = shstRefId;
+      }
+
       conflationMapSQLiteService.insertConflationMapFeatures(
         shstReferencePartitions
       );
     } else {
-      console.error(`NO MAPPINGS FOR SHST_REF_ID=${id}`);
+      console.error(
+        `Segment splitting failed for SharedStreets Reference ${shstRefId}`
+      );
     }
+
+    await new Promise(resolve => process.nextTick(resolve));
   }
+};
+
+(async () => {
+  await createPartitions();
+  conflationMapDAO.initializeConflationMapSegIdxLookupTables();
 })();

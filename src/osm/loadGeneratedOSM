@@ -4,42 +4,21 @@
 
 const _ = require('lodash');
 
-// const { readFileSync } = require('fs');
-// const { join } = require('path');
-// const turf = require('@turf/turf');
 const targetMapsSQLiteService = require('../services/targetMapsSQLiteService');
 const shstTilesetSQLiteService = require('../services/shstTilesetSQLiteService');
 const conflationMapSQLiteService = require('../services/conflationMapSQLiteService');
 const rawOsmSQLiteService = require('../services/rawOsmSQLiteService');
 const conflationOsmSQLiteService = require('../services/conflationOsmSQLiteService');
 
-// ALBANY Subset filtering
-
-// const {
-// features: [albanyPoly]
-// } = JSON.parse(
-// readFileSync(join(__dirname, './albany_bounding_polygon.geojson'))
-// );
-
-// const isInAlbany = feature => turf.booleanContains(albanyPoly, feature);
-
 const targetMapNamesList = targetMapsSQLiteService.getTargetMapsList();
 
 let nodeIdSeq = 0;
-let maxWayId = 0;
 
-const seenShstRefIds = new Set();
-
-// nodeIdSeq = 999366860;
-
+// We need to use the raw OSM nodes, with their original IDs, to preserve the Restrictions.
 const loadOSMNodes = () => {
   const iterator = shstTilesetSQLiteService.makeGeometryMetadataIterator();
 
   for (const { geometryFeature, metadata } of iterator) {
-    // if (!isInAlbany(geometryFeature)) {
-    // continue;
-    // }
-
     const { geometry: { coordinates = null } = {} } = geometryFeature || {};
 
     const { osmMetadata: { waySections = null } = {} } = metadata || {};
@@ -114,6 +93,7 @@ const loadMatchedWays = () => {
     // continue;
     // }
 
+
     try {
       validateMatchedWay(conflationOutputFeature);
     } catch (err) {
@@ -129,9 +109,6 @@ const loadMatchedWays = () => {
       } = {},
       geometry: { coordinates = null } = {}
     } = conflationOutputFeature || {};
-
-    const [shstRefId] = conflationMapId.split('|');
-    seenShstRefIds.add(shstRefId);
 
     // If node/vertex was added to shstRefernceGeometry for splitting
     if (_.first(nodeIds) === null) {
@@ -174,10 +151,8 @@ const loadMatchedWays = () => {
       targetMapNamesList
     );
 
-    const id = ++maxWayId;
-
     const conflationWay = {
-      id,
+      id: conflationMapId,
       nodes: nodeIds,
       rawOsmWayId,
       tags: Object.assign(
@@ -198,54 +173,6 @@ const loadMatchedWays = () => {
     };
 
     conflationOsmSQLiteService.insertWay(conflationWay);
-  }
-};
-
-const loadUnmatchedWays = () => {
-  const iterator = shstTilesetSQLiteService.makeShStReferenceFeatureIterator();
-
-  for (const shstReferenceFeature of iterator) {
-    // if (!isInAlbany(shstReferenceFeature)) {
-    // continue;
-    // }
-    const {
-      id: shstRefId,
-      properties: { osmMetadata: { waySections } } = {}
-    } = shstReferenceFeature;
-
-    if (seenShstRefIds.has(shstRefId)) {
-      continue;
-    }
-
-    seenShstRefIds.add(shstRefId);
-
-    if (!Array.isArray(waySections)) {
-      continue;
-    }
-
-    for (let i = 0; i < waySections.length; ++i) {
-      const waySection = waySections[i];
-      const { nodeIds, wayId: rawOsmWayId } = waySection;
-
-      const rawOsmWay = rawOsmSQLiteService.getWayById(rawOsmWayId);
-      const rawOsmWayMetadata = rawOsmWay && _.omit(rawOsmWay.tags, ['oneway']);
-
-      const id = ++maxWayId;
-
-      const conflationWay = {
-        id,
-        nodes: nodeIds,
-        rawOsmWayId,
-        tags: Object.assign(
-          {},
-          rawOsmWayMetadata,
-          { osm: rawOsmWayId },
-          { oneway: 'yes' }
-        )
-      };
-
-      conflationOsmSQLiteService.insertWay(conflationWay);
-    }
   }
 };
 
@@ -284,11 +211,7 @@ const loadRestrictions = () => {
       }
     );
 
-    console.error(
-      JSON.stringify({ conflationFromWayId, conflationToWayId }, null, 4)
-    );
     if (!_.isNil(conflationFromWayId) && !_.isNil(conflationToWayId)) {
-      console.log('INSERT');
       conflationOsmSQLiteService.insertRestriction({
         id: ++restrictionIdSeq,
         members: {
@@ -304,5 +227,4 @@ const loadRestrictions = () => {
 
 loadOSMNodes();
 loadMatchedWays();
-loadUnmatchedWays();
 loadRestrictions();

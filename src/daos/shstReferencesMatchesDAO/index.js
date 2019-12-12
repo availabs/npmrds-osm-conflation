@@ -3,7 +3,7 @@
 const shstTilesetSQLiteService = require('../../services/shstTilesetSQLiteService');
 const shstMatchesSQLiteService = require('../../services/shstMatchesSQLiteService');
 
-function* makeShStReferenceFeatureWithMatchesAsyncIterator() {
+function* makeShStReferenceFeatureWithMatchesIterator() {
   try {
     const iterator = shstTilesetSQLiteService.makeShStReferenceFeatureIterator();
 
@@ -28,5 +28,5 @@ function* makeShStReferenceFeatureWithMatchesAsyncIterator() {
 }
 
 module.exports = {
-  makeShStReferenceFeatureWithMatchesAsyncIterator
+  makeShStReferenceFeatureWithMatchesIterator
 };

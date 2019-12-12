@@ -17,18 +17,24 @@ const getOffsetsAlongShstRefForUnderlyingOsmWays = ({
   } = shstReferenceAuxProperties;
 
   if (!(osmWaySections && osmNodeIdsSeq && shstRefGeomVerticesSeq)) {
-    return null;
-  }
-
-  if (osmNodeIdsSeq.length !== shstRefGeomVerticesSeq.length) {
     console.error(
-      `INVARIANT BROKEN: Number of OSM nodes !== Number of shstGeom Vertices: ${shstReferenceId}`
+      'getOffsetsAlongShstRefForUnderlyingOsmWays requires osmWaySections && osmNodeIdsSeq && shstRefGeomVerticesSeq'
     );
     return null;
   }
 
-  // Need to iterate over the osmNodeIdsSeq while
-  //   handling the nodes that connect waySections
+  // If this condition does not hold, the logic below is invalid.
+  if (osmNodeIdsSeq.length !== shstRefGeomVerticesSeq.length) {
+    console.error(
+      `INVARIANT BROKEN: Number of OSM nodes !== Number of shstGeom Vertices: ${shstReferenceId}`
+    );
+    console.error(
+      JSON.stringify({ osmNodeIdsSeq, shstRefGeomVerticesSeq }, null, 4)
+    );
+    return null;
+  }
+
+  // Need to iterate over the osmNodeIdsSeq while handling the nodes that connect waySections
   let vertexIdx = 0;
 
   const offsetsList = osmWaySections.reduce((acc, waySection) => {
@@ -113,7 +119,8 @@ const getOffsetsAlongShstRefForUnderlyingOsmWays = ({
   }, []);
 
   const orderedNonOverlappingMatchedSegmentsOffsetsForShstRef = removeTargetMapMatchSegmentsOverlaps(
-    offsetsList
+    offsetsList,
+    0
   );
 
   assert(orderedNonOverlappingMatchedSegmentsOffsetsForShstRef !== null);

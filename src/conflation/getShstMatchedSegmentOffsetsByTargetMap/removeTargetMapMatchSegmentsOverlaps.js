@@ -100,10 +100,13 @@ const finalOffetsContainsOverlaps = finalOffsets => {
   return false;
 };
 
-const removeTargetMapMatchSegmentsOverlaps = targetMapMatchedSegementOffsetsForShstRef => {
+const removeTargetMapMatchSegmentsOverlaps = (
+  targetMapMatchedSegementOffsetsForShstRef,
+  threshold = SPLIT_BUFF_KM
+) => {
   const networkRankedToAddOffsets = _.sortBy(
     _.cloneDeep(targetMapMatchedSegementOffsetsForShstRef),
-    ['fsytem', 'target_map_id']
+    ['fsytem', ({ startDist, endDist }) => startDist - endDist]
   );
 
   const nonOverlapping = [networkRankedToAddOffsets[0]];
@@ -166,7 +169,7 @@ const removeTargetMapMatchSegmentsOverlaps = targetMapMatchedSegementOffsetsForS
       switch (spatialRelationship) {
         case NO_OVERLAP: {
           // No overlap, therefore not need to mutate the lowerRanked.
-          continue;
+          break;
         }
 
         case LOWER_RANKED_COVERED_BY_HIGHER_RANKED: {
@@ -211,9 +214,9 @@ const removeTargetMapMatchSegmentsOverlaps = targetMapMatchedSegementOffsetsForS
         }
       }
 
-      const lowerRankedLen = lowerRanked.startDist - lowerRanked.endDist;
+      const lowerRankedLen = lowerRanked.endDist - lowerRanked.startDist;
 
-      if (lowerRankedLen < SPLIT_BUFF_KM) {
+      if (lowerRankedLen < threshold) {
         break;
       }
     } // end innner loop.
@@ -221,7 +224,10 @@ const removeTargetMapMatchSegmentsOverlaps = targetMapMatchedSegementOffsetsForS
     const newLowerRankedSegmentLength =
       lowerRanked.endDist - lowerRanked.startDist;
 
-    if (newLowerRankedSegmentLength >= SPLIT_BUFF_KM) {
+    if (
+      newLowerRankedSegmentLength > 0 &&
+      newLowerRankedSegmentLength >= threshold
+    ) {
       nonOverlapping.push(lowerRanked);
     }
   }
