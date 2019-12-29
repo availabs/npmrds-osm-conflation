@@ -3,16 +3,17 @@
 const { isAbsolute, basename, join } = require('path');
 const yargs = require('yargs');
 const recursive = require('recursive-readdir');
+const tmp = require('tmp');
 
-const loadFeaturesFromGZippedNDSJON = require('./loadFeaturesFromGZippedNDSJON');
+const TargetMapLoadingWorkDatabaseService = require('../TargetMapLoadingWorkDatabaseService');
+
+const loadTargetMapFeaturesIntoWorkDatabase = require('./loadTargetMapFeaturesIntoWorkDatabase');
+const addMesoLevelPropertiesToTargetMapFeatures = require('./addMesoLevelPropertiesToTargetMapFeatures');
+const loadTargetMapFeaturesIntoPermanentDatabase = require('../loadTargetMapFeaturesIntoPermanentDatabase');
 
 const cliArgsSpec = {
   data_dir: {
     demand: true,
-    type: 'string'
-  },
-  county: {
-    demand: false,
     type: 'string'
   }
 };
@@ -26,17 +27,7 @@ const { argv } = yargs
   .wrap(yargs.terminalWidth() / 1.618)
   .option(cliArgsSpec);
 
-const { data_dir, county } = argv;
-
-const COUNTY = county ? county.toUpperCase() : null;
-
-const getFeatureId = ({ properties: { gis_id, beg_mp } }) =>
-  `${gis_id}##${beg_mp}`;
-
-const featureFilter = COUNTY
-  ? ({ properties: { county_name: c } }) =>
-      c && c.replace(/[^A-Z ]/i, '').toUpperCase() === COUNTY
-  : () => true;
+const { data_dir } = argv;
 
 const dataDirAbs = isAbsolute(data_dir)
   ? data_dir
@@ -62,13 +53,28 @@ const ignoreAllFilesExceptYearNDJSON = (file, stats) => {
 
       const targetMap = `ris_${year}`;
 
-      // eslint-disable-next-line no-await-in-loop
-      await loadFeaturesFromGZippedNDSJON({
-        targetMap,
-        filePath,
-        getFeatureId,
-        featureFilter
-      });
+      if (+year === 2019) {
+        const { name: tmpSQLiteDirPath, removeCallback: cleanup } = tmp.dirSync(
+          {
+            // dir: join(__dirname, '../../../tmpsqlite/'),
+            unsafeCleanup: true
+          }
+        );
+
+        const dbService = new TargetMapLoadingWorkDatabaseService(
+          targetMap,
+          tmpSQLiteDirPath
+        );
+
+        // eslint-disable-next-line no-await-in-loop
+        await loadTargetMapFeaturesIntoWorkDatabase(dbService, filePath);
+
+        addMesoLevelPropertiesToTargetMapFeatures(dbService);
+
+        loadTargetMapFeaturesIntoPermanentDatabase(dbService);
+
+        cleanup();
+      }
     }
   } catch (err) {
     if (err.code === 'ENOENT') {

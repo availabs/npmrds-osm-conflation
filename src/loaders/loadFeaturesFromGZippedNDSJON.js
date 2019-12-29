@@ -4,13 +4,13 @@ const { createReadStream } = require('fs');
 const { Gunzip } = require('zlib');
 const { pipe, through } = require('mississippi');
 const split = require('split2');
-const targetMapsSQLiteService = require('../services/targetMapsSQLiteService');
+const _ = require('lodash');
 
 const loadFeaturesFromGZippedNDJSON = ({
-  targetMap,
+  dbService,
   filePath,
-  getFeatureId,
-  featureFilter = () => true
+  getTargetMapProperties,
+  propertyTransforms = f => f
 }) =>
   new Promise((resolve, reject) => {
     pipe(
@@ -18,11 +18,27 @@ const loadFeaturesFromGZippedNDJSON = ({
       Gunzip(),
       split(JSON.parse),
       through.obj(async function loader(feature, $, cb) {
-        // eslint-disable-next-line no-param-reassign
-        feature.id = getFeatureId(feature);
+        try {
+          if (
+            _.isNil(feature.geometry) ||
+            !Array.isArray(feature.geometry.coordinates) ||
+            feature.geometry.coordinates.length < 2
+          ) {
+            return cb();
+          }
 
-        if (featureFilter(feature)) {
-          targetMapsSQLiteService.insertFeatures(targetMap, feature);
+          Object.assign(
+            feature.properties,
+            getTargetMapProperties(feature),
+            propertyTransforms(feature)
+          );
+
+          // eslint-disable-next-line no-param-reassign
+          feature.id = feature.properties.targetMapId;
+
+          dbService.insertTargetMapFeature(feature);
+        } catch (err) {
+          console.error(err.message);
         }
 
         return cb();
