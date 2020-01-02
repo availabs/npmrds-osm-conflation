@@ -53,28 +53,28 @@ const ignoreAllFilesExceptYearNDJSON = (file, stats) => {
 
       const targetMap = `ris_${year}`;
 
-      if (+year === 2019) {
-        const { name: tmpSQLiteDirPath, removeCallback: cleanup } = tmp.dirSync(
-          {
-            // dir: join(__dirname, '../../../tmpsqlite/'),
-            unsafeCleanup: true
-          }
-        );
+      const { name: tmpSQLiteDirPath, removeCallback: cleanup } = tmp.dirSync({
+        dir: join(__dirname, '../../../tmpsqlite/'),
+        unsafeCleanup: true
+      });
 
-        const dbService = new TargetMapLoadingWorkDatabaseService(
-          targetMap,
-          tmpSQLiteDirPath
-        );
+      const dbService = new TargetMapLoadingWorkDatabaseService(
+        targetMap,
+        tmpSQLiteDirPath
+      );
 
-        // eslint-disable-next-line no-await-in-loop
-        await loadTargetMapFeaturesIntoWorkDatabase(dbService, filePath);
+      // eslint-disable-next-line no-await-in-loop
+      await loadTargetMapFeaturesIntoWorkDatabase(
+        targetMap,
+        dbService,
+        filePath
+      );
 
-        addMesoLevelPropertiesToTargetMapFeatures(dbService);
+      addMesoLevelPropertiesToTargetMapFeatures(dbService);
 
-        loadTargetMapFeaturesIntoPermanentDatabase(dbService);
+      loadTargetMapFeaturesIntoPermanentDatabase(dbService);
 
-        cleanup();
-      }
+      cleanup();
     }
   } catch (err) {
     if (err.code === 'ENOENT') {

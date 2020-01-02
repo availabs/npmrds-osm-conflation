@@ -1,8 +1,7 @@
 /* eslint no-restricted-syntax: 0, no-continue: 0 */
 
 const _ = require('lodash');
-const turf = require('@turf/turf');
-const turfHelpers = require('@turf/helpers');
+const getChainBearing = require('../../utils/getChainBearing');
 
 const {
   MESO_LEVEL_FEATURES_SORTING_BY_DIRECTION_AND_PROPERTIES
@@ -50,24 +49,6 @@ const sortFeaturesUsingDirectionAndRoadOrder = featuresById => {
   };
 };
 
-const getChainBearing = chain => {
-  const flattenedCoords = _(chain)
-    .map('geometry.coordinates')
-    .flattenDeep()
-    .value();
-
-  const [startLon, startLat] = flattenedCoords;
-
-  const [endLon, endLat] = flattenedCoords.slice(-2);
-
-  const startPoint = turfHelpers.point([startLon, startLat]);
-  const endPoint = turfHelpers.point([endLon, endLat]);
-
-  const bearing = _.round(turf.bearing(startPoint, endPoint), { final: true });
-
-  return bearing;
-};
-
 const addMesoLevelProperties = dbService => {
   const iterator = dbService.makeTargetMapFeaturesGroupedByTargetMapMesoIdIterator();
 
@@ -94,7 +75,7 @@ const addMesoLevelProperties = dbService => {
         for (let j = 0; j < chain.length; ++j) {
           const { id } = chain[j];
 
-          dbService.updateTargetMapMesoLevelProperties({
+          dbService.insertTargetMapMesoLevelProperties({
             id,
             targetMapMesoLevelIdx: j,
             targetMapMesoLevelSortMethod: sortMethod,

@@ -4,6 +4,8 @@ const _ = require('lodash');
 
 const { isSomething } = require('../../utils/helpers');
 
+const getTargetMapFeatureBearing = require('../getTargetMapFeatureBearing');
+
 const loadFeaturesFromGZippedNDSJON = require('../loadFeaturesFromGZippedNDSJON');
 
 const nysFipsCodes = require('../nysFipsCodes.json');
@@ -41,7 +43,7 @@ const normalizedDirNames = {
   W: 'WESTBOUND'
 };
 
-const getTargetMapProperties = feature => {
+const makeGetTargetMapProperties = targetMap => feature => {
   const {
     properties: {
       tmc,
@@ -85,7 +87,10 @@ const getTargetMapProperties = feature => {
     ? +f_system
     : UNDEFINED_FSYSTEM_RANK;
 
+  const targetMapMicroLevelBearing = getTargetMapFeatureBearing(feature);
+
   return {
+    targetMap,
     targetMapId,
     targetMapMesoId,
     targetMapMacroId,
@@ -93,7 +98,11 @@ const getTargetMapProperties = feature => {
     targetMapIsPrimary,
     targetMapNetHrchyRank,
     targetMapCountyCode,
-    targetMapRegionCode
+    targetMapRegionCode,
+    targetMapMicroLevelBearing,
+    targetMapMesoLevelIdx: null,
+    targetMapMesoLevelSortMethod: null,
+    targetMapMesoLevelBearing: null
   };
 };
 
@@ -138,11 +147,12 @@ const propertyTransforms = feature => {
   return normalizedProps;
 };
 
-const loadTargetMapFeatures = (dbService, filePath) =>
+const loadTargetMapFeatures = (targetMap, dbService, filePath) =>
   loadFeaturesFromGZippedNDSJON({
+    targetMap,
     dbService,
     filePath,
-    getTargetMapProperties,
+    getTargetMapProperties: makeGetTargetMapProperties(targetMap),
     propertyTransforms
   });
 

@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 /* eslint no-restricted-syntax: 0 */
 
 const { join } = require('path');
@@ -49,33 +47,12 @@ const createInsertTargetMapFeatureStmnt = db =>
     ;
   `);
 
-// Initialzes the meso-level properties to NULL
-const createInsertTargetMapFeatureMesoLevelPropertiesStmnt = db =>
+const createInsertTargetMapFeatureMesoLevelPropertiesStmt = db =>
   db.prepare(`
-    INSERT INTO target_map_features_meso_level_properties (
-        id,
-        meso_level_properties
-      )
-      VALUES(
-        ?,
-        json_object(
-          'targetMapMesoLevelIdx',
-          null,
-          'targetMapMesoLevelSortMethod',
-          null,
-          'targetMapMesoLevelBearing',
-          null
-        )
-      )
-    ;
-  `);
-
-const createUpdateTargetMapFeatureMesoLevelPropertiesStmt = db =>
-  db.prepare(`
-      UPDATE target_map_features_meso_level_properties
-        SET
-          meso_level_properties = json(?)
-        WHERE ( id = ? )
+      INSERT INTO target_map_features_meso_level_properties (
+          id,
+          meso_level_properties
+      ) VALUES(?, json(?))
       ;
   `);
 
@@ -92,7 +69,6 @@ class TargetMapLoadingWorkDatabaseService {
 
     const microLevelDb = new Database(microLevelDbPath);
     const mesoLevelDb = new Database(mesoLevelDbPath);
-
     let joinedDb;
 
     initializeMicroLevelDatabase(microLevelDb);
@@ -101,37 +77,40 @@ class TargetMapLoadingWorkDatabaseService {
     const insertTargetMapFeaturesStmnt = createInsertTargetMapFeatureStmnt(
       microLevelDb
     );
-    const insertTargetMapFeaturesMesoLevelPropertiesStmnt = createInsertTargetMapFeatureMesoLevelPropertiesStmnt(
-      mesoLevelDb
-    );
 
     this.insertTargetMapFeature = feature => {
       const { id } = feature;
+
       const strFeature = JSON.stringify(feature);
       insertTargetMapFeaturesStmnt.run([id, strFeature]);
-      insertTargetMapFeaturesMesoLevelPropertiesStmnt.run([id]);
     };
 
-    const updateTargetMapFeatureMesoLevelPropertiesStmt = createUpdateTargetMapFeatureMesoLevelPropertiesStmt(
+    const insertTargetMapFeatureMesoLevelPropertiesStmt = createInsertTargetMapFeatureMesoLevelPropertiesStmt(
       mesoLevelDb
     );
 
-    this.updateTargetMapMesoLevelProperties = ({
+    this.insertTargetMapMesoLevelProperties = ({
       id,
       targetMapMesoLevelIdx = null,
       targetMapMesoLevelSortMethod = null,
       targetMapMesoLevelBearing = null
-    }) =>
-      updateTargetMapFeatureMesoLevelPropertiesStmt.run([
-        JSON.stringify({
-          properties: {
-            targetMapMesoLevelIdx,
-            targetMapMesoLevelSortMethod,
-            targetMapMesoLevelBearing
-          }
-        }),
-        id
-      ]);
+    }) => {
+      try {
+        insertTargetMapFeatureMesoLevelPropertiesStmt.run([
+          id,
+          JSON.stringify({
+            properties: {
+              targetMapMesoLevelIdx,
+              targetMapMesoLevelSortMethod,
+              targetMapMesoLevelBearing
+            }
+          })
+        ]);
+      } catch (err) {
+        console.error(err);
+        throw err;
+      }
+    };
 
     this.makeTargetMapFeaturesGroupedByTargetMapMesoIdIterator = function* generator() {
       const q = microLevelDb.prepare(`
@@ -168,11 +147,14 @@ class TargetMapLoadingWorkDatabaseService {
             SET
               feature = json_patch(
                 feature,
-                (
-                  SELECT
-                      meso_level_properties
-                    FROM meso_level.target_map_features_meso_level_properties
-                      WHERE id = micro_level.target_map_features.id
+                coalesce(
+                  (
+                    SELECT
+                        meso_level_properties
+                      FROM meso_level.target_map_features_meso_level_properties
+                        WHERE ( id = micro_level.target_map_features.id )
+                  ),
+                  json('{}')
                 )
               )
           ;
@@ -183,6 +165,7 @@ class TargetMapLoadingWorkDatabaseService {
 
     this.loadTargetMapFeaturesIntoPermanentDatabase = () => {
       const iterator = joinedDb
+        // .prepare(`SELECT feature FROM target_map_features;`)
         .prepare(`SELECT feature FROM target_map_features;`)
         .raw()
         .iterate();

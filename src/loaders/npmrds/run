@@ -54,7 +54,7 @@ const ignoreAllFilesExceptYearNDJSON = (file, stats) => {
       const targetMap = `npmrds_${year}`;
 
       const { name: tmpSQLiteDirPath, removeCallback: cleanup } = tmp.dirSync({
-        // dir: join(__dirname, '../../../tmpsqlite/'),
+        dir: join(__dirname, '../../../tmpsqlite/'),
         unsafeCleanup: true
       });
 
@@ -64,7 +64,11 @@ const ignoreAllFilesExceptYearNDJSON = (file, stats) => {
       );
 
       // eslint-disable-next-line no-await-in-loop
-      await loadTargetMapFeaturesIntoWorkDatabase(dbService, filePath);
+      await loadTargetMapFeaturesIntoWorkDatabase(
+        targetMap,
+        dbService,
+        filePath
+      );
 
       addMesoLevelPropertiesToTargetMapFeatures(dbService);
 
