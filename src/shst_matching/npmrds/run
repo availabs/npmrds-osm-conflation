@@ -1,0 +1,72 @@
+#!/usr/bin/env node
+
+/* eslint no-restricted-syntax: 0, no-await-in-loop: 0 */
+
+const { join } = require('path');
+const tmp = require('tmp');
+
+const targetMapsSQLiteService = require('../../services/targetMapsSQLiteService');
+
+const ShstMatchingWorkDatabaseService = require('../ShstMatchingWorkDatabaseService');
+const NpmrdsSharedStreetsMatchesAsyncIterator = require('./NpmrdsSharedStreetsMatchesAsyncIterator');
+const loadMatchesForTargetMap = require('../loadMatchesForTargetMap');
+const addMesoLevelMetadata = require('../addMesoLevelMetadata');
+const addMegaLevelMetadata = require('../addMegaLevelMetadata');
+
+const MAX_MATCHING_ITERATIONS = 2;
+
+(async () => {
+  try {
+    const targetMaps = targetMapsSQLiteService.getTargetMapsList();
+
+    const npmrdsTargetMaps = targetMaps.filter(targetMap =>
+      /^npmrds_\d{4}$/.test(targetMap)
+    );
+
+    for (let i = 0; i < npmrdsTargetMaps.length; ++i) {
+      const targetMap = npmrdsTargetMaps[i];
+
+      // const { name: tmpSQLiteDirPath, removeCallback: cleanup } = tmp.dirSync({
+      // dir: join(__dirname, '../../../tmpsqlite/'),
+      // unsafeCleanup: true
+      // });
+      const tmpSQLiteDirPath = join(
+        __dirname,
+        '../../../tmpsqlite/',
+        targetMap
+      );
+
+      require('fs').mkdirSync(tmpSQLiteDirPath, { recursive: true });
+
+      const dbService = new ShstMatchingWorkDatabaseService(
+        targetMap,
+        tmpSQLiteDirPath
+      );
+
+      const unmatchedTargetMapFeaturesIterator = dbService.makeUnmatchedTargetMapFeaturesIterator();
+
+      const shstMatchesAsyncIterator = new NpmrdsSharedStreetsMatchesAsyncIterator(
+        unmatchedTargetMapFeaturesIterator
+      );
+
+      await loadMatchesForTargetMap(
+        dbService,
+        shstMatchesAsyncIterator,
+        MAX_MATCHING_ITERATIONS
+      );
+
+      addMesoLevelMetadata(dbService);
+
+      dbService.mergeTargetMapMatchedFeaturesMetadataWorkPropertiesIntoTargetMapFeatures();
+
+      addMegaLevelMetadata(dbService);
+
+      dbService.mergeTargetMapMatchedFeaturesMetadataWorkPropertiesIntoTargetMapFeatures();
+
+      dbService.loadShstMatchesIntoPermanentDatabase()
+    }
+  } catch (err) {
+    console.error(err);
+    process.exit(1);
+  }
+})();
