@@ -2,13 +2,19 @@
 
 /* eslint no-continue: 0, no-loop-func: 0, no-underscore-dangle: 0, no-restricted-syntax: 0 */
 
-const _ = require('lodash');
+const { readFileSync } = require('fs');
+const { join } = require('path');
 
-const { shstOsmWayRoadClassRankings } = require('../../conflation/constants');
+const turf = require('@turf/turf');
+const _ = require('lodash');
 
 // const nysBoundingPolygon = JSON.parse(
 // readFileSync(join(__dirname, './nys.bounding.geojson'))
 // );
+
+const albanyBoundingPolygon = JSON.parse(
+  readFileSync(join(__dirname, './albany.bounding.geojson'))
+);
 
 const selectShStReferenceFromCandidates = require('./selectShStReferenceFromCandidates');
 
@@ -19,23 +25,12 @@ const selectShStReferenceFromCandidates = require('./selectShStReferenceFromCand
 // )
 // : turf.booleanWithin(geomFeature, nysBoundingPolygon);
 
+const roadInAlbany = geomFeature =>
+  turf.booleanWithin(geomFeature, albanyBoundingPolygon);
+
 // In the SharedStreets tileset, References are not GeoJSON features.
 //   They are simply metadata objects.
 //   We need to use their respective
-
-const getNetworkLevel = osmMetadata => {
-  const roadClass = (osmMetadata && osmMetadata.roadClass) || 'Other';
-
-  let networklevel = shstOsmWayRoadClassRankings[roadClass];
-
-  const oneWay = (osmMetadata && osmMetadata.oneWay) || false;
-
-  if (oneWay) {
-    networklevel += 0.5;
-  }
-
-  return networklevel;
-};
 
 const createForwardReferenceFeature = (geomFeature, osmMetadata) => {
   const {
@@ -53,8 +48,7 @@ const createForwardReferenceFeature = (geomFeature, osmMetadata) => {
     fromIntersectionId,
     toIntersectionId,
     reversed: false,
-    osmMetadata,
-    networklevel: getNetworkLevel(osmMetadata)
+    osmMetadata
   };
 
   return Object.assign({}, geomFeature, { id: forwardReferenceId, properties });
@@ -88,8 +82,7 @@ const createBackReferenceFeature = (geomFeature, osmMetadata) => {
     fromIntersectionId: toIntersectionId,
     toIntersectionId: fromIntersectionId,
     reversed: true,
-    osmMetadata: reversedOsmMetadata,
-    networklevel: getNetworkLevel(osmMetadata)
+    osmMetadata: reversedOsmMetadata
   };
 
   const reversedCoords = geometry.coordinates.slice().reverse();
@@ -112,6 +105,10 @@ class ShStReferenceFeaturesIterator {
         const { shst_reference_id, geom_feature, metadata, is_forward } = row;
         const geomFeature = JSON.parse(geom_feature);
         const { osmMetadata = null } = metadata ? JSON.parse(metadata) : {};
+
+        if (!roadInAlbany(geomFeature)) {
+          continue;
+        }
 
         // if (!roadInNYS(geomFeature)) {
         // console.error(JSON.stringify(geomFeature.geometry.coordinates));
