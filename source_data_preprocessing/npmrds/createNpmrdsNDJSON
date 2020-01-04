@@ -30,6 +30,8 @@ const { argv } = yargs
 
 const { tmc_identification, npmrds_shapefile_zip } = argv;
 
+const validDirectionsRE = /N|NORTBOUND|E|EASTBOUND|S|SOUTHBOUND|W|WESTBOUND/i;
+
 const getTmcMetadata = () => {
   const tmcMetadata = {};
   return new Promise((resolve, reject) =>
@@ -39,7 +41,22 @@ const getTmcMetadata = () => {
         const d = _.mapKeys(raw, (v, k) => k.toLowerCase());
         const { tmc } = d;
 
-        tmcMetadata[tmc] = d;
+        tmcMetadata[tmc] = tmcMetadata[tmc] || {};
+
+        if (
+          tmcMetadata[tmc].direction &&
+          !tmcMetadata[tmc].direction.match(validDirectionsRE)
+        ) {
+          tmcMetadata[tmc].direction = null;
+        }
+
+        Object.assign(
+          tmcMetadata[tmc],
+          // If this is not the first row for this TMC,
+          //   omit empty properties,
+          //   else include them to get a uniform schema.
+          _.omitBy(d, (v, k) => _.isNil(v) && !_.isNil(tmcMetadata[tmc][k]))
+        );
 
         return cb();
       }),
@@ -86,37 +103,92 @@ const streamNDJSON = tmcMetadata => {
           -t_srs EPSG:4326 \
           /vsistdout/ \
           /vsizip/${shpFileName}${subDir} |
-        jq -c --stream 'fromstream(inputs | select( [.[0][0]] == ["features"]) | del(.[0][0:2])) | select(.)'
+        jq -c --stream '
+            fromstream(
+              inputs |
+              select( [.[0][0]] == ["features"]) |
+              del(.[0][0:2])
+            ) |
+            select(.)
+          ' |
+        jq -s -c 'sort_by(.properties.tmc)[]'
       `,
       { cwd, maxBuffer: Infinity }
     );
 
     stderr.pipe(process.stderr);
 
+    let curTmc;
+    let tmcFeatureAcc;
+
     return pipe(
       featuresStream,
       split(JSON.parse),
-      through.obj(function metadata_merger(raw_feature, $, cb) {
-        const feature = Object.assign({}, raw_feature, {
-          properties: _.mapKeys(raw_feature.properties, (v, k) =>
-            k.toLowerCase()
-          )
-        });
+      through.obj(
+        function metadata_merger(raw_feature, $, cb) {
+          const feature = Object.assign({}, raw_feature, {
+            properties: _.mapKeys(raw_feature.properties, (v, k) =>
+              k.toLowerCase()
+            )
+          });
 
-        const {
-          properties: { tmc }
-        } = feature;
+          if (
+            feature.direction &&
+            !feature.direction.match(validDirectionsRE)
+          ) {
+            feature.direction = null;
+          }
 
-        // eslint-disable-next-line no-param-reassign
-        feature.id = tmc;
+          const {
+            properties: { tmc }
+          } = feature;
 
-        const metadata = tmcMetadata[tmc];
-        Object.assign(feature.properties, metadata);
+          if (curTmc !== tmc) {
+            if (!_.isNil(tmcFeatureAcc)) {
+              this.push(`${JSON.stringify(tmcFeatureAcc)}\n`);
+            }
 
-        this.push(`${JSON.stringify(feature)}\n`);
+            curTmc = tmc;
+            tmcFeatureAcc = feature;
+            tmcFeatureAcc.id = tmc;
 
-        return cb();
-      }),
+            Object.assign(
+              tmcFeatureAcc.properties,
+              _.omitBy(
+                tmcMetadata[tmc],
+                (v, k) =>
+                  (_.isNil(v) || v === '') && !_.isNil(feature.properties[k])
+              )
+            );
+          } else {
+            Object.assign(
+              tmcFeatureAcc.properties,
+              _.omitBy(
+                feature.properties,
+                (v, k) =>
+                  (_.isNil(v) || v === '') &&
+                  !_.isNil(tmcFeatureAcc.properties[k])
+              )
+            );
+
+            if (
+              feature.geometry.coordinates.length >
+              tmcFeatureAcc.geometry.coordinates.length
+            ) {
+              tmcFeatureAcc.geometry = feature.geometry;
+            }
+          }
+
+          return cb();
+        },
+        function flush(cb) {
+          if (!_.isNil(tmcFeatureAcc)) {
+            this.push(`${JSON.stringify(tmcFeatureAcc)}\n`);
+          }
+
+          return cb();
+        }
+      ),
       process.stdout,
       err => {
         if (err) {

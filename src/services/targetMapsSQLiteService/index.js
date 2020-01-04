@@ -9,9 +9,10 @@ const _ = require('lodash');
 
 const Database = require('better-sqlite3');
 
-const getGeoProximityKeyPrefix = require('../../utils/getGeoProximityKeyPrefix');
+const getGeoProximityKey = require('../../utils/getGeoProximityKey');
 
-const SQLITE_PATH = join(__dirname, '../../../data/sqlite/');
+// const SQLITE_PATH = join(__dirname, '../../../data/sqlite/');
+const SQLITE_PATH = join(__dirname, '../../../tmpsqlite/');
 
 const TARGET_MAPS_SQLITE_PATH = join(SQLITE_PATH, 'target_maps');
 
@@ -25,12 +26,14 @@ const createTargetMapTable = targetMap => {
 
     CREATE TABLE IF NOT EXISTS ${targetMap} (
       id           TEXT PRIMARY KEY,
+      region_code  TEXT,
+      county_code  TEXT,
       geoprox_key  TEXT NOT NULL,
       feature      TEXT NOT NULL --JSON
     ) WITHOUT ROWID;
 
-    CREATE INDEX IF NOT EXISTS ${targetMap}_geoprox_idx
-      ON ${targetMap}(geoprox_key);
+    CREATE INDEX IF NOT EXISTS ${targetMap}_iteration_order_idx
+      ON ${targetMap}(region_code, county_code, geoprox_key);
 
     COMMIT ;`);
 };
@@ -63,9 +66,11 @@ const getFeatureInputStatementForTargetMap = targetMap => {
   featureInputStatementsByTargetMap[targetMap] = db.prepare(`
     INSERT INTO ${targetMap} (
       id,
+      region_code,
+      county_code,
       geoprox_key,
       feature
-    ) VALUES(?, ?, ?);
+    ) VALUES(?, ?, ?, ?, ?);
 
   `);
 
@@ -91,72 +96,42 @@ const insertFeatures = (targetMap, features) => {
   for (let i = 0; i < featuresArr.length; i++) {
     const feature = featuresArr[i];
 
-    const { id } = feature;
+    const {
+      properties: { targetMapId, targetMapCountyCode, targetMapRegionCode }
+    } = feature;
 
-    const geoProximityKeyPrefix = getGeoProximityKeyPrefix(feature);
-    const geoproxKey = `${geoProximityKeyPrefix}##${id}`;
+    const geoproxKey = getGeoProximityKey(feature);
 
     try {
-      featureInputStatement.run([id, geoproxKey, JSON.stringify(feature)]);
+      featureInputStatement.run([
+        targetMapId,
+        targetMapRegionCode,
+        targetMapCountyCode,
+        geoproxKey,
+        JSON.stringify(feature)
+      ]);
     } catch (err) {
       // console.error(err)
     }
   }
 };
 
-const targetMapFeatureIteratorQueriesByTargetMap = {};
-const getFeatureIteratorQueriesByTargetMap = targetMap => {
-  const iteratorQuery = targetMapFeatureIteratorQueriesByTargetMap[targetMap];
-
-  if (iteratorQuery) {
-    return iteratorQuery;
-  }
-
-  targetMapFeatureIteratorQueriesByTargetMap[targetMap] = db.prepare(`
-    SELECT feature FROM ${targetMap};
-  `);
-
-  return targetMapFeatureIteratorQueriesByTargetMap[targetMap];
-};
-
 function* makeFeatureIterator(targetMap) {
-  const iteratorQuery = getFeatureIteratorQueriesByTargetMap(targetMap);
-
-  const iterator = iteratorQuery.raw().iterate();
-
-  for (const [strFeature] of iterator) {
-    const feature = JSON.parse(strFeature);
-    yield feature;
-  }
-}
-
-const targetMapGeoProximityFeatureIteratorQueriesByTargetMap = {};
-const getGeoProximityFeatureIteratorQueriesByTargetMap = targetMap => {
-  const iteratorQuery =
-    targetMapGeoProximityFeatureIteratorQueriesByTargetMap[targetMap];
-
-  if (iteratorQuery) {
-    return iteratorQuery;
-  }
-
-  targetMapGeoProximityFeatureIteratorQueriesByTargetMap[
-    targetMap
-  ] = db.prepare(`
+  // FIXME: Remove county_code filter
+  const iterator = db
+    .prepare(
+      `
     SELECT
         feature
       FROM ${targetMap}
-      ORDER BY geoprox_key;
-  `);
-
-  return targetMapGeoProximityFeatureIteratorQueriesByTargetMap[targetMap];
-};
-
-function* makeGeoProximityFeatureIterator(targetMap) {
-  const iteratorQuery = getGeoProximityFeatureIteratorQueriesByTargetMap(
-    targetMap
-  );
-
-  const iterator = iteratorQuery.raw().iterate();
+WHERE (county_code = '36001')
+      ORDER BY region_code, county_code, geoprox_key
+-- LIMIT 128
+    ;
+  `
+    )
+    .raw()
+    .iterate();
 
   for (const [strFeature] of iterator) {
     const feature = JSON.parse(strFeature);
@@ -195,10 +170,30 @@ const getFeature = (targetMap, id) => {
   return feature;
 };
 
+function* makeFeaturesGroupedByPropertyIterator(targetMap, prop) {
+  const q = db.prepare(`
+    SELECT
+        JSON_EXTRACT(feature, '$.properties.${prop}'),
+        GROUP_CONCAT(feature)  
+      FROM ${targetMap}
+      WHERE ( JSON_EXTRACT(feature, '$.properties.${prop}') IS NOT NULL )
+      GROUP BY 1
+      ORDER BY 1
+  `);
+
+  const iterator = q.raw().iterate();
+
+  for (const [groupId, strFeatures] of iterator) {
+    const features = JSON.parse(`[${strFeatures}]`);
+
+    yield { [prop]: groupId, features };
+  }
+}
+
 module.exports = {
   getTargetMapsList,
   insertFeatures,
   makeFeatureIterator,
-  makeGeoProximityFeatureIterator,
-  getFeature
+  getFeature,
+  makeFeaturesGroupedByPropertyIterator
 };

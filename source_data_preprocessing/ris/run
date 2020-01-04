@@ -1,5 +1,17 @@
 #!/usr/bin/env node
 
+/*
+  ris
+  ├── 2016
+  │   └── ris_gdb.zip
+  ├── 2017
+  │   └── ris_gdb.zip
+  ├── 2018
+  │   └── ris_gdb.zip
+  └── 2019
+      └── ris_gdb.zip
+*/
+
 const { readdirSync, createWriteStream } = require('fs');
 const { spawn } = require('child_process');
 const { isAbsolute, join, basename } = require('path');

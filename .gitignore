@@ -6,6 +6,7 @@ data/
 *\.geojson
 *.jar
 *.log
+*.tar.gz
 *\.ndjson
 node_modules/
 package-lock.json
