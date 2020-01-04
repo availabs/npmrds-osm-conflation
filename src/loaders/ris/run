@@ -14,7 +14,8 @@ const loadTargetMapFeaturesIntoPermanentDatabase = require('../loadTargetMapFeat
 const cliArgsSpec = {
   data_dir: {
     demand: true,
-    type: 'string'
+    type: 'string',
+    default: join(__dirname, '../../../data/ris')
   }
 };
 

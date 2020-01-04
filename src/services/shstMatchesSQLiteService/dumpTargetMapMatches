@@ -1,0 +1,11 @@
+#!/usr/bin/env node
+
+const service = require('./');
+
+(async () => {
+  const iterator = service.makeTargetMapFeatureIterator('ris_2019');
+
+  for (const feature of iterator) {
+    console.log(JSON.stringify(feature));
+  }
+})();

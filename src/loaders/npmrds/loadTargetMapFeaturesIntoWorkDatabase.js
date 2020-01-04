@@ -82,7 +82,7 @@ const makeGetTargetMapProperties = targetMap => feature => {
     : null;
 
   const targetMapMegaId = isSomething(roadnumber) ? `${roadnumber}` : null;
-  const targetMapIsPrimary = isSomething(isprimary) ? !!isprimary : true;
+  const targetMapIsPrimary = isSomething(isprimary) ? !!+isprimary : true;
   const targetMapNetHrchyRank = isSomething(f_system)
     ? +f_system
     : UNDEFINED_FSYSTEM_RANK;

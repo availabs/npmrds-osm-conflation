@@ -21,6 +21,9 @@ const getRawOffsets = ({
     geometry: { coordinates: matchLineStringCoords }
   } = matchedSegment;
 
+  // FIXME: Delete this. Temp fix for data issues caused by downstream bug.
+  matchedSegment.type = 'Feature';
+
   // Get the match LineString endpoints
   const matchStartPtCoords = point(_.first(matchLineStringCoords));
   const matchEndPtCoords = point(_.last(matchLineStringCoords));
@@ -49,16 +52,7 @@ const getRawOffsets = ({
       IN_KILOMETERS
     );
   } catch (err) {
-    // console.error('vvvvvvvvvvvv');
-    // console.error(
-    // JSON.stringify(
-    // { shstReferenceFeature, shstReferenceAuxProperties, matchedSegment },
-    // null,
-    // 4
-    // )
-    // );
     console.error(err);
-    // console.error('^^^^^^^^^^^^');
     return null;
   }
   const {
@@ -139,8 +133,7 @@ const getRawOffsets = ({
 const getMatchedSegmentsLocationsAlongShstRef = ({
   shstReferenceFeature,
   shstReferenceAuxProperties,
-  shstMatches,
-  targetMap
+  shstMatches
 }) => {
   const offsetsList = [];
 
@@ -152,10 +145,16 @@ const getMatchedSegmentsLocationsAlongShstRef = ({
       matchedSegment
     });
 
+    const { shstReferenceDir } = shstReferenceAuxProperties;
+
     if (rawOffsets !== null) {
-      const {
-        properties: { targetMapId, targetMapNetHrchyRank, targetMapIsPrimary }
-      } = matchedSegment;
+      const targetMapProperties = _.pickBy(matchedSegment.properties, (v, k) =>
+        /^targetMap*/.test(k)
+      );
+      const matchedTargetMapProperties = _.pickBy(
+        matchedSegment.properties,
+        (v, k) => /^matchedTargetMap*/.test(k)
+      );
 
       // shstRef  s...........................e
       // match    |             s....e        |
@@ -171,16 +170,17 @@ const getMatchedSegmentsLocationsAlongShstRef = ({
       if (snappedOffsets !== null) {
         const { POFF, NOFF, startDist, endDist } = snappedOffsets;
 
-        offsetsList.push({
-          targetMap,
-          targetMapId,
-          targetMapNetHrchyRank,
-          targetMapIsPrimary,
+        const matchedSegmentOffsetsObj = {
+          shstReferenceDir,
           POFF,
           NOFF,
           startDist,
-          endDist
-        });
+          endDist,
+          ...targetMapProperties,
+          ...matchedTargetMapProperties
+        };
+
+        offsetsList.push(matchedSegmentOffsetsObj);
       }
     }
   }

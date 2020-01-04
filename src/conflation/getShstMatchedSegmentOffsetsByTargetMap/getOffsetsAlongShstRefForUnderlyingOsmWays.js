@@ -13,7 +13,8 @@ const getOffsetsAlongShstRefForUnderlyingOsmWays = ({
     shstReferenceId,
     osmWaySections,
     osmNodeIdsSeq,
-    shstRefGeomVerticesSeq
+    shstRefGeomVerticesSeq,
+    shstReferenceDir
   } = shstReferenceAuxProperties;
 
   if (!(osmWaySections && osmNodeIdsSeq && shstRefGeomVerticesSeq)) {
@@ -38,7 +39,7 @@ const getOffsetsAlongShstRefForUnderlyingOsmWays = ({
   let vertexIdx = 0;
 
   const offsetsList = osmWaySections.reduce((acc, waySection) => {
-    const { wayId, nodeIds, roadClass } = waySection;
+    const { wayId, nodeIds, roadClass, oneWay } = waySection;
 
     const targetMapNetHrchyRank = Number.isFinite(
       shstOsmWayRoadClassRankings[roadClass]
@@ -104,11 +105,17 @@ const getOffsetsAlongShstRefForUnderlyingOsmWays = ({
       properties: { POFF: endDist, NOFF }
     } = endVertex;
 
+    const matchedTargetMapId = `${wayId}!${shstReferenceDir}`;
+
     acc.push({
+      targetMapOneWay: oneWay, // OSM only targetMap prop
       targetMap: OSM,
       targetMapId: wayId,
+      matchedTargetMapId,
+      matchedTargetMapMicroId: matchedTargetMapId,
       targetMapNetHrchyRank,
       targetMapIsPrimary: true,
+      shstReferenceDir,
       POFF: startDist,
       NOFF,
       startDist,

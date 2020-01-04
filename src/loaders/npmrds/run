@@ -13,8 +13,9 @@ const loadTargetMapFeaturesIntoPermanentDatabase = require('../loadTargetMapFeat
 
 const cliArgsSpec = {
   data_dir: {
-    demand: true,
-    type: 'string'
+    demand: false,
+    type: 'string',
+    default: join(__dirname, '../../../data/npmrds')
   }
 };
 

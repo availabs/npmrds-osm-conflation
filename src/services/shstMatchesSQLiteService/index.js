@@ -9,9 +9,8 @@ const Database = require('better-sqlite3');
 
 const makeShstReferenceChains = require('./makeShstReferenceChains');
 
-const getGeoProximityKeyPrefix = require('../../utils/getGeoProximityKeyPrefix');
-
-const SQLITE_PATH = join(__dirname, '../../../data/sqlite/');
+// const SQLITE_PATH = join(__dirname, '../../../data/sqlite/');
+const SQLITE_PATH = join(__dirname, '../../../tmpsqlite/');
 
 const SHST_MATCHES_SQLITE_PATH = join(SQLITE_PATH, 'shst_matches');
 
@@ -63,7 +62,7 @@ const shstMatchInputStatement = db.prepare(`
 
 // INSERT the shst match output
 const insertFeatures = matchFeatures => {
-  if (!(matchFeatures && matchFeatures.length)) {
+  if (_.isNil(matchFeatures)) {
     return;
   }
 
@@ -94,7 +93,7 @@ const insertFeatures = matchFeatures => {
         JSON.stringify(feature)
       );
     } catch (err) {
-      //
+      console.error(err)
     }
   }
 };
@@ -256,32 +255,6 @@ const getSetOfAllMatchedSementsForTargetMap = targetMap =>
       .map(({ target_map_id }) => target_map_id)
   );
 
-const allMatchedFeatureCoordinatedForTargetMap = db.prepare(`
-  SELECT json_extract(feature, '$.geometry.coordinates')
-    FROM shst_matches
-    WHERE ( target_map = ? )
-`);
-
-const getMaxMatchedSegmentGeoProximityKeyForTargetMap = targetMap => {
-  let maxGeoProxKey = String.fromCharCode(0);
-
-  const iterator = allMatchedFeatureCoordinatedForTargetMap
-    .raw()
-    .iterate([targetMap]);
-
-  for (const strCoords of iterator) {
-    const coords = JSON.parse(strCoords);
-
-    const gpk = getGeoProximityKeyPrefix(coords);
-
-    if (maxGeoProxKey.localeCompare(gpk) < 0) {
-      maxGeoProxKey = gpk;
-    }
-  }
-
-  return maxGeoProxKey;
-};
-
 module.exports = {
   insertFeatures,
   makeTargetMapFeatureIterator,
@@ -289,6 +262,5 @@ module.exports = {
   makeAllMatchedFeaturesIterator,
   getMatchesByTargetMapForShStReference,
   getShstReferenceChains,
-  getSetOfAllMatchedSementsForTargetMap,
-  getMaxMatchedSegmentGeoProximityKeyForTargetMap
+  getSetOfAllMatchedSementsForTargetMap
 };

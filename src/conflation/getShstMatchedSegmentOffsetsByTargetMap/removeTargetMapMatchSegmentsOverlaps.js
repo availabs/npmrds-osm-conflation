@@ -105,8 +105,11 @@ const removeTargetMapMatchSegmentsOverlaps = (
   threshold = SPLIT_BUFF_KM
 ) => {
   const networkRankedToAddOffsets = _.sortBy(
-    _.cloneDeep(targetMapMatchedSegementOffsetsForShstRef),
-    ['fsytem', ({ startDist, endDist }) => startDist - endDist]
+    _.cloneDeep(targetMapMatchedSegementOffsetsForShstRef, [
+      ({ targetMapIsPrimary }) => (targetMapIsPrimary ? 1 : -1),
+      'targetMapNetHrchyRank',
+      ({ startDist, endDist }) => startDist - endDist
+    ])
   );
 
   const nonOverlapping = [networkRankedToAddOffsets[0]];

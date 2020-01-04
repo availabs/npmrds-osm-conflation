@@ -22,9 +22,7 @@ const getShstMatchedSegmentOffsetsByTargetMap = ({
     for (let i = 0; i < targetMaps.length; ++i) {
       const targetMap = targetMaps[i];
 
-      const shstMatches = shstMatchesByTargetMap[targetMap].filter(
-        ({ properties: { targetMapIsPrimary } }) => targetMapIsPrimary
-      );
+      const shstMatches = shstMatchesByTargetMap[targetMap];
 
       const segmentOffsetsList = getOffsetsAlongShstRefForTargetMapSegments({
         shstReferenceFeature,

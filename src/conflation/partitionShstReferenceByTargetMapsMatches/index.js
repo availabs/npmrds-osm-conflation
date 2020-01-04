@@ -61,8 +61,7 @@ const partitionShstReferenceByTargetMapsMatches = ({
     'fromIntersectionId',
     'toIntersectionId',
     'reversed',
-    'state',
-    'networklevel'
+    'state'
   ]);
 
   for (let i = 1; i < orderedSplitterOffsetsList.length; ++i) {
@@ -139,12 +138,13 @@ const partitionShstReferenceByTargetMapsMatches = ({
 
   // Map targetMap IDs to the sourceMap segments
   for (let i = 0; i < allMatchedSegmentsOffsets.length; ++i) {
+    const matchedSegmentOffsetsObj = allMatchedSegmentsOffsets[i];
+
     const {
       startDist: tmsStartDist,
       endDist: tmsEndDist,
-      targetMap,
-      targetMapId
-    } = allMatchedSegmentsOffsets[i];
+      targetMap
+    } = matchedSegmentOffsetsObj;
 
     const tmsStart = _.round(tmsStartDist, 6);
     const tmsEnd = _.round(tmsEndDist, 6);
@@ -172,7 +172,22 @@ const partitionShstReferenceByTargetMapsMatches = ({
             'INVARIANT BROKEN. More than one target_map segment per source map segment.'
           );
         }
-        segment.properties[targetMap] = targetMapId;
+
+        const targetMapProperties = _.pickBy(matchedSegmentOffsetsObj, (v, k) =>
+          /^targetMap*/.test(k)
+        );
+        const matchedTargetMapProperties = _.pickBy(
+          matchedSegmentOffsetsObj,
+          (v, k) => /^matchedTargetMap*/.test(k)
+        );
+
+        const targetMapMetadata = {
+          ...targetMapProperties,
+          ...matchedTargetMapProperties
+        };
+
+        // TODO: Make this a sub-object with multiple fields.
+        segment.properties[targetMap] = targetMapMetadata;
       }
     }
   }
@@ -188,10 +203,10 @@ const partitionShstReferenceByTargetMapsMatches = ({
     const segment = shstReferencePartitions[i];
 
     const {
-      properties: { [OSM]: wayId = null }
+      properties: { [OSM]: wayId }
     } = segment;
 
-    if (wayId === null) {
+    if (_.isNil(wayId)) {
       // FIXME: Throw here
       console.error('ERROR: wayId === null');
     }

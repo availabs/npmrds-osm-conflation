@@ -1,0 +1,103 @@
+#!/usr/bin/env node
+
+/* eslint no-restricted-syntax: 0, no-continue: 0, no-await-in-loop: 0 */
+
+const { join } = require('path');
+
+const _ = require('lodash');
+
+const shstReferencesMatchesDAO = require('../daos/shstReferencesMatchesDAO');
+
+const getShstReferenceAuxProperties = require('./getShstReferenceAuxProperties');
+const getShstMatchedSegmentOffsetsByTargetMap = require('./getShstMatchedSegmentOffsetsByTargetMap');
+
+const partitionShstReferenceByTargetMapsMatches = require('./partitionShstReferenceByTargetMapsMatches');
+
+const ConflationWorkDatabaseService = require('./ConflationWorkDatabaseService');
+
+const { shstOsmWayRoadClassRankings } = require('./constants');
+
+const { Other: OTHER_NETWORK_RANK } = shstOsmWayRoadClassRankings;
+
+// const { name: tmpSQLiteDirPath, removeCallback: cleanup } = tmp.dirSync({
+// dir: join(__dirname, '../../../tmpsqlite/'),
+// unsafeCleanup: true
+// });
+const tmpSQLiteDirPath = join(
+  __dirname,
+  '../../tmpsqlite/',
+  'conflation_map_workdir'
+);
+
+require('fs').mkdirSync(tmpSQLiteDirPath, { recursive: true });
+
+const dbService = new ConflationWorkDatabaseService(tmpSQLiteDirPath);
+
+const loadConflationFeatures = async () => {
+  const iterator = shstReferencesMatchesDAO.makeShStReferenceFeatureWithMatchesIterator();
+
+  for (const { shstReferenceFeature, shstMatchesByTargetMap } of iterator) {
+    const { id: shstReferenceId } = shstReferenceFeature;
+
+    const shstReferenceAuxProperties = getShstReferenceAuxProperties(
+      shstReferenceFeature
+    );
+
+    const shstMatchedSegmentOffsetsByTargetMap = getShstMatchedSegmentOffsetsByTargetMap(
+      {
+        shstReferenceFeature,
+        shstReferenceAuxProperties,
+        shstMatchesByTargetMap
+      }
+    );
+
+    const shstReferencePartitions = partitionShstReferenceByTargetMapsMatches({
+      shstReferenceFeature,
+      shstReferenceAuxProperties,
+      shstMatchedSegmentOffsetsByTargetMap
+    });
+
+    if (shstReferencePartitions) {
+      // Assign IDs to the features.
+      for (let i = 0; i < shstReferencePartitions.length; ++i) {
+        const shstRefPartition = shstReferencePartitions[i];
+
+        const oneWay = _.get(
+          shstRefPartition,
+          ['properties', 'osm', 'targetMapOneWay'],
+          false
+        );
+
+        let networklevel = _.get(
+          shstRefPartition,
+          ['properties', 'osm', 'targetMapNetHrchyRank'],
+          OTHER_NETWORK_RANK
+        );
+
+        if (oneWay) {
+          networklevel += 0.5;
+        }
+
+        // NOTE: shstRefPartition ID assigned by the ConflationWorkDatabaseService.
+        Object.assign(shstRefPartition.properties, {
+          shstReferenceId,
+          networklevel
+        });
+
+        dbService.insertFeature(shstRefPartition);
+      }
+    } else {
+      console.error(
+        `Segment splitting failed for SharedStreets Reference ${shstReferenceId}`
+      );
+    }
+
+    await new Promise(resolve => process.nextTick(resolve));
+  }
+};
+
+(async () => {
+  await loadConflationFeatures();
+  dbService.mergeConflationMetadataIntoFeatures();
+  dbService.loadConflationMapFeaturesIntoPermanentDatabase();
+})();
