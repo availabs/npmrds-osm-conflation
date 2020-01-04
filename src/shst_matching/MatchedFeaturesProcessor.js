@@ -1,3 +1,4 @@
+const turf = require('@turf/turf');
 const _ = require('lodash');
 
 const {
@@ -31,7 +32,10 @@ const normalizeShstMatchedFeatures = shstMatchedFeatures => {
     shstMatchedFeatures,
     _.isEqual
   ).reduce((acc, shstMatchedFeature, i) => {
-    const { properties } = shstMatchedFeature;
+    const {
+      properties,
+      geometry: { coordinates }
+    } = shstMatchedFeature;
 
     const shstProps = _.omitBy(properties, (v, k) => /^pp_/.test(k));
 
@@ -40,11 +44,12 @@ const normalizeShstMatchedFeatures = shstMatchedFeatures => {
       .mapKeys((v, k) => targetMapPropertiesRestoreLookup[k])
       .value();
 
-    acc.push({
-      id: i,
-      properties: { ...shstProps, ...targetMapProps },
-      geometry: shstMatchedFeature.geometry
-    });
+    const feature = turf.lineString(
+      coordinates,
+      { ...shstProps, ...targetMapProps },
+      { id: i }
+    );
+    acc.push(feature);
 
     return acc;
   }, []);
@@ -194,7 +199,6 @@ class MatchedFeaturesProcessor {
           this.targetMapLinestringsAreDirected
         );
 
-        // This acts as a match quality test
         if (sortedShstMatchedFeatures) {
           const numReqLeadingZeros = `${targetMapIds.length - 1}`.length;
 
@@ -219,9 +223,12 @@ class MatchedFeaturesProcessor {
                 '0'
               );
 
-              shstMatchedFeature.id = `${matchedTargetMapMicroProtoId}|${idxKey}`;
+              const matchedTargetMapId = `${matchedTargetMapMicroProtoId}|${idxKey}`;
+
+              shstMatchedFeature.id = matchedTargetMapId;
 
               Object.assign(shstMatchedFeature.properties, {
+                matchedTargetMapId,
                 matchedTargetMapMicroIdx,
                 matchedTargetMapMicroLevelBearing,
                 matchedTargetMapMicroProtoId
@@ -231,13 +238,20 @@ class MatchedFeaturesProcessor {
             associatedMatches[targetMapId].shstMatchedFeatures.push(...chain);
           }
         } else {
-          const hexPadLen = Number(shstMatches.length - 1).toString(16).length;
+          const padLen = Number(shstMatches.length - 1).toString().length;
 
-          shstMatches.forEach((shstMatch, j) => {
-            const idx = _.padStart(Number(j).toString(16), hexPadLen, '0');
+          shstMatches.forEach((shstMatchedFeature, j) => {
+            const protoId = _.padStart(Number(j).toString(), padLen, '0')
+              .split('')
+              .map(c => String.fromCharCode(c.charCodeAt(0) + 17))
+              .join('');
+
+            const matchedTargetMapId = `${targetMapId}!${protoId}`;
 
             // eslint-disable-next-line no-param-reassign
-            shstMatch.id = `${targetMapId}!${idx}`;
+            shstMatchedFeature.id = matchedTargetMapId;
+            // eslint-disable-next-line no-param-reassign
+            shstMatchedFeature.properties.matchedTargetMapId = matchedTargetMapId;
           });
 
           associatedMatches[targetMapId].shstMatchedFeatures = shstMatches;

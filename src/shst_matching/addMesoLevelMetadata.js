@@ -4,9 +4,9 @@ const _ = require('lodash');
 
 const {
   createTopoSortedChains
-} = require('../../utils/FeaturesTopographicalSorter');
+} = require('../utils/FeaturesTopographicalSorter');
 
-const getChainBearing = require('../../utils/getChainBearing');
+const getChainBearing = require('../utils/getChainBearing');
 
 const FOLLOWS_DIRECTION_BEARING_DIFF_THRESHOLD = 45;
 
@@ -39,7 +39,6 @@ const createSimplifiedMicroLevelEdges = shstMatchedFeaturesByTargetMapMicroProto
       Array.isArray(shstMatchedFeaturesChain) &&
       shstMatchedFeaturesChain.length
     ) {
-      // console.log(JSON.stringify(shstMatchedFeaturesChain, null, 4));
       const {
         properties: { shstFromIntersectionId: fromNodeId }
       } = _.first(shstMatchedFeaturesChain);
@@ -69,9 +68,6 @@ const handleFailedNetworkBasedApproach = (dbService, shstMatchedFeatures) => {
       }
     } = shstMatchedFeatures[i];
 
-    // console.log('@'.repeat(30));
-    // console.log(JSON.stringify(shstMatchedFeatures[i], null, 4));
-
     if (
       !_.isNil(targetMapMicroLevelBearing) &&
       !_.isNil(matchedTargetMapMicroLevelBearing)
@@ -90,7 +86,7 @@ const handleFailedNetworkBasedApproach = (dbService, shstMatchedFeatures) => {
       dbService.upsertMatchedFeatureMetadata(id, {
         targetMapMesoLevelBearing,
         matchedTargetMapMesoLevelBearing,
-        matchedTargetMapMesoIdx: null,
+        matchedTargetMapMesoIdx: null
       });
     }
   }
@@ -108,17 +104,6 @@ const addMesoLevelMetadata = dbService => {
       const simplifiedMicroLevelEdges = createSimplifiedMicroLevelEdges(
         shstMatchedFeaturesByTargetMapMicroProtoId
       );
-
-      // console.log(
-      // JSON.stringify(
-      // {
-      // shstMatchedFeaturesByTargetMapMicroProtoId,
-      // simplifiedMicroLevelEdges
-      // },
-      // null,
-      // 4
-      // )
-      // );
 
       try {
         const sortedSimplifiedMicroLevelEdges = createTopoSortedChains(
@@ -154,15 +139,6 @@ const addMesoLevelMetadata = dbService => {
         }
       } catch (err) {
         handleFailedNetworkBasedApproach(dbService, shstMatchedFeatures);
-        // console.log('++++++++++++++++++++++++++++++++++++');
-        // console.error(err);
-        // console.log(targetMapMesoId);
-        // console.log('shstMatchedFeatures.length =', shstMatchedFeatures.length);
-        // console.log(
-        // 'simplifiedMicroLevelEdges.length =',
-        // simplifiedMicroLevelEdges.length
-        // );
-        // console.log('++++++++++++++++++++++++++++++++++++');
       }
     }
   }

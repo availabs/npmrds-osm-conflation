@@ -62,6 +62,8 @@ const MAX_MATCHING_ITERATIONS = 2;
       addMegaLevelMetadata(dbService);
 
       dbService.mergeTargetMapMatchedFeaturesMetadataWorkPropertiesIntoTargetMapFeatures();
+
+      dbService.loadShstMatchesIntoPermanentDatabase();
     }
   } catch (err) {
     console.error(err);
