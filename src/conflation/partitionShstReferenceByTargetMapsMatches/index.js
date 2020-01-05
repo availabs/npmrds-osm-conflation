@@ -136,7 +136,7 @@ const partitionShstReferenceByTargetMapsMatches = ({
     shstReferencePartitions.push(segment);
   }
 
-  // Map targetMap IDs to the sourceMap segments
+  // add targetMapMetadata to the conflationMap micro-level features
   for (let i = 0; i < allMatchedSegmentsOffsets.length; ++i) {
     const matchedSegmentOffsetsObj = allMatchedSegmentsOffsets[i];
 

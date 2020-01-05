@@ -99,21 +99,13 @@ class ConflationWorkDatabaseService {
           if (!_.isNil(targetMapMetadata)) {
             const {
               matchedTargetMapId,
-              matchedTargetMapMicroProtoId,
-              matchedTargetMapMicroId,
-              matchedTargetMapMicroIdx = 0
+              matchedTargetMapMicroIdx
             } = targetMapMetadata;
-
-            // ID Order of preference
-            const conflationMapMatchedTargetMapId =
-              matchedTargetMapMicroId || // meso-level-sortable matches
-              matchedTargetMapMicroProtoId || // micro-level-sortable matches
-              matchedTargetMapId; // all matched targetMap features
 
             insertMetadataStmnt.run([
               protoId,
               targetMap,
-              conflationMapMatchedTargetMapId,
+              matchedTargetMapId,
               +matchedTargetMapMicroIdx || 0,
               +segmentIndex
             ]);

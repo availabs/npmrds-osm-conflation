@@ -61,6 +61,7 @@ const iterator = conflationMapSQLiteService.makeConflationMapFeatureIterator();
 
     console.log(JSON.stringify(feature));
 
+    // https://stackoverflow.com/a/34278415
     await new Promise(resolve => process.nextTick(resolve));
   }
 })();

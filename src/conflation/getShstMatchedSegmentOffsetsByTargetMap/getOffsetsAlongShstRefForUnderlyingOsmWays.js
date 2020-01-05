@@ -112,7 +112,6 @@ const getOffsetsAlongShstRefForUnderlyingOsmWays = ({
       targetMap: OSM,
       targetMapId: wayId,
       matchedTargetMapId,
-      matchedTargetMapMicroId: matchedTargetMapId,
       targetMapNetHrchyRank,
       targetMapIsPrimary: true,
       shstReferenceDir,

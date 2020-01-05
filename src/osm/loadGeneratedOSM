@@ -10,12 +10,16 @@ const conflationMapSQLiteService = require('../services/conflationMapSQLiteServi
 const rawOsmSQLiteService = require('../services/rawOsmSQLiteService');
 const conflationOsmSQLiteService = require('../services/conflationOsmSQLiteService');
 
-const targetMapNamesList = targetMapsSQLiteService.getTargetMapsList();
+const targetMapNamesList = Array.prototype.concat(
+  targetMapsSQLiteService.getTargetMapsList(),
+  'osm'
+);
 
 let nodeIdSeq = 0;
 
 // We need to use the raw OSM nodes, with their original IDs, to preserve the Restrictions.
-const loadOSMNodes = () => {
+//   FIXME: Get these nodes from the conflationMap osmMetadata rather than the raw OSM
+const loadRawOsmNodes = () => {
   const iterator = shstTilesetSQLiteService.makeGeometryMetadataIterator();
 
   for (const { geometryFeature, metadata } of iterator) {
@@ -84,95 +88,118 @@ const validateMatchedWay = feature => {
   }
 };
 
+const loadConflationGeneratedOsmNodes = conflationMapFeature => {
+  const {
+    properties: {
+      osmMetadata: { waySection: { nodeIds = null } = {} } = {}
+    } = {},
+    geometry: { coordinates = null } = {}
+  } = conflationMapFeature || {};
+
+  // If node/vertex was added to shstRefernceGeometry for splitting
+  if (_.first(nodeIds) === null) {
+    const [lon, lat] = _.first(coordinates);
+
+    let id = conflationOsmSQLiteService.getNodeIdByCoordinates({ lon, lat });
+
+    if (id !== null) {
+      nodeIds[0] = id;
+    } else {
+      id = Math.floor(++nodeIdSeq);
+      conflationOsmSQLiteService.insertNode({ id, lon, lat });
+      nodeIds[0] = id;
+    }
+  }
+
+  // If node/vertex was added to shstRefernceGeometry for splitting
+  if (_.last(nodeIds) === null) {
+    const [lon, lat] = _.last(coordinates);
+    const lastNodeIdx = nodeIds.length - 1;
+
+    let id = conflationOsmSQLiteService.getNodeIdByCoordinates({ lon, lat });
+
+    if (id !== null) {
+      nodeIds[lastNodeIdx] = conflationOsmSQLiteService.getNodeIdByCoordinates({
+        lon,
+        lat
+      });
+    } else {
+      id = Math.floor(++nodeIdSeq);
+      conflationOsmSQLiteService.insertNode({ id, lon, lat });
+      nodeIds[lastNodeIdx] = id;
+    }
+  }
+};
+
+const loadConflationGeneratedOsmWay = conflationMapFeature => {
+  const {
+    id: conflationMapId, // The auto-incremented INTEGER primary key.
+    properties: {
+      osm: { targetMapId: rawOsmWayId },
+      osmMetadata: { waySection: { nodeIds = null } = {} } = {}
+    } = {}
+  } = conflationMapFeature || {};
+
+  // NEED to use the OSM targetMapId
+  const rawOsmWay = rawOsmSQLiteService.getWayById(rawOsmWayId);
+  const rawOsmWayMetadata = rawOsmWay && _.omit(rawOsmWay.tags, ['oneway']);
+
+  // NEED to add _id suffix
+  const conflationMatchedTargetMapMetadata = _(conflationMapFeature.properties)
+    .pick(targetMapNamesList)
+    .reduce(
+      (acc, metadata, targetMapName) =>
+        Object.assign(acc, {
+          [`${targetMapName}_id`]: metadata.conflationMapMatchedTargetMapId,
+          [`${targetMapName}_idx`]: metadata.conflationMapMatchedTargetMapIdx
+        }),
+      {}
+    );
+
+  const conflationWay = {
+    id: conflationMapId,
+    nodes: nodeIds,
+    rawOsmWayId,
+    tags: Object.assign(
+      {},
+      rawOsmWayMetadata,
+      _.mapKeys(
+        _.omit(
+          conflationMapFeature.properties,
+          Array.prototype.concat(
+            ['osmMetadata', 'fsystem', 'oneway', 'oneWay'],
+            targetMapNamesList // Removes the metadata objects to keep tag values scalar.
+          )
+        ),
+        (v, k) => `conflation_map:${k}`
+      ),
+      conflationMatchedTargetMapMetadata,
+      { oneway: 'yes' }
+    )
+  };
+
+  conflationOsmSQLiteService.insertWay(conflationWay);
+};
+
 // Need to insert ways that were not paired to NPMRDS or RIS.
-const loadMatchedWays = () => {
+const loadConflationGeneratedOsmNodesAndWays = () => {
   const iterator = conflationMapSQLiteService.makeConflationMapFeatureIterator();
 
-  for (const conflationOutputFeature of iterator) {
-    // if (!isInAlbany(conflationOutputFeature)) {
+  for (const conflationMapFeature of iterator) {
+    // if (!isInAlbany(conflationMapFeature)) {
     // continue;
     // }
 
-
     try {
-      validateMatchedWay(conflationOutputFeature);
+      validateMatchedWay(conflationMapFeature);
     } catch (err) {
       console.error(err);
       continue;
     }
 
-    const {
-      id: conflationMapId,
-      properties: {
-        osm: rawOsmWayId,
-        osmMetadata: { waySection: { nodeIds = null } = {} } = {}
-      } = {},
-      geometry: { coordinates = null } = {}
-    } = conflationOutputFeature || {};
+    loadConflationGeneratedOsmNodes(conflationMapFeature);
 
-    // If node/vertex was added to shstRefernceGeometry for splitting
-    if (_.first(nodeIds) === null) {
-      const [lon, lat] = _.first(coordinates);
-
-      let id = conflationOsmSQLiteService.getNodeIdByCoordinates({ lon, lat });
-
-      if (id !== null) {
-        nodeIds[0] = id;
-      } else {
-        id = Math.floor(++nodeIdSeq);
-        conflationOsmSQLiteService.insertNode({ id, lon, lat });
-        nodeIds[0] = id;
-      }
-    }
-
-    // If node/vertex was added to shstRefernceGeometry for splitting
-    if (_.last(nodeIds) === null) {
-      const [lon, lat] = _.last(coordinates);
-      const lastNodeIdx = nodeIds.length - 1;
-
-      let id = conflationOsmSQLiteService.getNodeIdByCoordinates({ lon, lat });
-
-      if (id !== null) {
-        nodeIds[
-          lastNodeIdx
-        ] = conflationOsmSQLiteService.getNodeIdByCoordinates({ lon, lat });
-      } else {
-        id = Math.floor(++nodeIdSeq);
-        conflationOsmSQLiteService.insertNode({ id, lon, lat });
-        nodeIds[lastNodeIdx] = id;
-      }
-    }
-
-    const rawOsmWay = rawOsmSQLiteService.getWayById(rawOsmWayId);
-    const rawOsmWayMetadata = rawOsmWay && _.omit(rawOsmWay.tags, ['oneway']);
-
-    const matchedTargetMapIds = _.pick(
-      conflationOutputFeature.properties,
-      targetMapNamesList
-    );
-
-    const conflationWay = {
-      id: conflationMapId,
-      nodes: nodeIds,
-      rawOsmWayId,
-      tags: Object.assign(
-        {},
-        rawOsmWayMetadata,
-        _.mapKeys(
-          _.omit(conflationOutputFeature.properties, [
-            'osmMetadata',
-            'fsystem',
-            'oneway',
-            'oneWay'
-          ]),
-          (v, k) => `sharedstreets:${k}`
-        ),
-        matchedTargetMapIds,
-        { oneway: 'yes' }
-      )
-    };
-
-    conflationOsmSQLiteService.insertWay(conflationWay);
+    loadConflationGeneratedOsmWay(conflationMapFeature);
   }
 };
 
@@ -225,6 +252,6 @@ const loadRestrictions = () => {
   }
 };
 
-loadOSMNodes();
-loadMatchedWays();
+loadRawOsmNodes();
+loadConflationGeneratedOsmNodesAndWays();
 loadRestrictions();
