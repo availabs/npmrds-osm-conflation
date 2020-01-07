@@ -145,8 +145,6 @@ const getMatchedSegmentsLocationsAlongShstRef = ({
       matchedSegment
     });
 
-    const { shstReferenceDir } = shstReferenceAuxProperties;
-
     if (rawOffsets !== null) {
       const targetMapProperties = _.pickBy(matchedSegment.properties, (v, k) =>
         /^targetMap*/.test(k)
@@ -171,7 +169,6 @@ const getMatchedSegmentsLocationsAlongShstRef = ({
         const { POFF, NOFF, startDist, endDist } = snappedOffsets;
 
         const matchedSegmentOffsetsObj = {
-          shstReferenceDir,
           POFF,
           NOFF,
           startDist,

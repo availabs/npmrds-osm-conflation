@@ -18,6 +18,7 @@ const normalizedDirNames = {
 const makeGetTargetMapProperties = targetMap => feature => {
   const {
     properties: {
+      objectid,
       region,
       county_nam,
       fips_co,
@@ -32,6 +33,14 @@ const makeGetTargetMapProperties = targetMap => feature => {
     throw new Error('RIS feature lacks properties necessary to create an ID.');
   }
 
+  const targetMapId = +objectid;
+
+  if (!Number.isFinite(targetMapId)) {
+    throw new Error(
+      `INVARIANT BROKEN: objectid (${objectid}) is not an integer.`
+    );
+  }
+
   const countyName = county_nam
     .toLowerCase()
     .replace(/\./g, '')
@@ -44,7 +53,6 @@ const makeGetTargetMapProperties = targetMap => feature => {
     throw new Error(`Unrecognized countyName: ${countyName}`);
   }
 
-  const targetMapId = `${gis_id}|${beg_mp}`;
   const targetMapMesoId = `${targetMapCountyCode}|${gis_id}`;
   const targetMapMacroId = gis_id;
   const targetMapMegaId = dot_id;

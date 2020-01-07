@@ -14,7 +14,7 @@ const getOffsetsAlongShstRefForUnderlyingOsmWays = ({
     osmWaySections,
     osmNodeIdsSeq,
     shstRefGeomVerticesSeq,
-    shstReferenceDir
+    shstReferenceMicroLevelDirectionOfTravel
   } = shstReferenceAuxProperties;
 
   if (!(osmWaySections && osmNodeIdsSeq && shstRefGeomVerticesSeq)) {
@@ -105,7 +105,7 @@ const getOffsetsAlongShstRefForUnderlyingOsmWays = ({
       properties: { POFF: endDist, NOFF }
     } = endVertex;
 
-    const matchedTargetMapId = `${wayId}!${shstReferenceDir}`;
+    const matchedTargetMapId = `${wayId}!${shstReferenceMicroLevelDirectionOfTravel}`;
 
     acc.push({
       targetMapOneWay: oneWay, // OSM only targetMap prop
@@ -114,7 +114,7 @@ const getOffsetsAlongShstRefForUnderlyingOsmWays = ({
       matchedTargetMapId,
       targetMapNetHrchyRank,
       targetMapIsPrimary: true,
-      shstReferenceDir,
+      shstReferenceMicroLevelDirectionOfTravel,
       POFF: startDist,
       NOFF,
       startDist,

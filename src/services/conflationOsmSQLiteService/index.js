@@ -8,8 +8,8 @@ const _ = require('lodash');
 
 const Database = require('better-sqlite3');
 
-const SQLITE_PATH = join(__dirname, '../../../data/sqlite/');
-// const SQLITE_PATH = join(__dirname, '../../../tmpsqlite');
+// const SQLITE_PATH = join(__dirname, '../../../data/sqlite/');
+const SQLITE_PATH = join(__dirname, '../../../tmpsqlite');
 
 const RAW_OSM_SQLITE_PATH = join(SQLITE_PATH, 'conflation_osm');
 

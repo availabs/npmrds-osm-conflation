@@ -12,13 +12,20 @@ const targetMaps = Array.prototype.concat(
   'osm'
 );
 
+const directionOfTravel = require('../constants/directionOfTravel');
+
 const iterator = conflationMapSQLiteService.makeConflationMapFeatureIterator();
 
 (async () => {
   for (const feature of iterator) {
     const {
       id,
-      properties: { segmentIndex, totalSegments, networklevel }
+      properties: {
+        segmentIndex,
+        totalSegments,
+        networklevel,
+        shstReferenceMicroLevelDirectionOfTravel
+      }
     } = feature;
 
     const newProps = {
@@ -27,10 +34,11 @@ const iterator = conflationMapSQLiteService.makeConflationMapFeatureIterator();
       networklevel
     };
 
-    Object.assign(feature.properties);
+    const risMegaLevelDirectionsOfTravel = [];
 
     for (let i = 0; i < targetMaps.length; ++i) {
       const targetMap = targetMaps[i];
+
       const abbreviatedTargetMapName = targetMap
         .replace(/npmrds_20/, 'tmc') // npmrds_2019 -> tmc19
         .replace(/ris_20/, 'ris');
@@ -40,13 +48,22 @@ const iterator = conflationMapSQLiteService.makeConflationMapFeatureIterator();
       if (!_.isNil(targetMapMetadata)) {
         const {
           conflationMapMatchedTargetMapId,
-          conflationMapMatchedTargetMapIdx
+          conflationMapMatchedTargetMapIdx,
+          matchedTargetMapMegaLevelDirectionOfTravel
         } = targetMapMetadata;
 
+        if (targetMap.match(/^ris/)) {
+          if (!_.isNil(matchedTargetMapMegaLevelDirectionOfTravel)) {
+            risMegaLevelDirectionsOfTravel.push(
+              matchedTargetMapMegaLevelDirectionOfTravel
+            );
+          }
+        }
+
         if (!_.isNil(conflationMapMatchedTargetMapId)) {
-          newProps[
-            `${abbreviatedTargetMapName}id`
-          ] = conflationMapMatchedTargetMapId;
+          const [targetMapId] = conflationMapMatchedTargetMapId.split(/\||!/);
+
+          newProps[`${abbreviatedTargetMapName}id`] = targetMapId;
           newProps[
             `${abbreviatedTargetMapName}idx`
           ] = conflationMapMatchedTargetMapIdx;
@@ -55,6 +72,24 @@ const iterator = conflationMapSQLiteService.makeConflationMapFeatureIterator();
           newProps[`${abbreviatedTargetMapName}idx`] = null;
         }
       }
+    }
+
+    if (risMegaLevelDirectionsOfTravel.length) {
+      const [{ megaLevelDirOfTrav }] = _(
+        risMegaLevelDirectionsOfTravel.reduce((acc, dir) => {
+          acc[dir] = acc[dir] || { megaLevelDirOfTrav: dir, count: 0 };
+          ++acc[dir].count;
+          return acc;
+        }, {})
+      )
+        .sortBy('count')
+        .reverse()
+        .value();
+
+      const dir = directionOfTravel[megaLevelDirOfTrav];
+      newProps.dir = dir;
+    } else {
+      newProps.dir = shstReferenceMicroLevelDirectionOfTravel;
     }
 
     feature.properties = newProps;

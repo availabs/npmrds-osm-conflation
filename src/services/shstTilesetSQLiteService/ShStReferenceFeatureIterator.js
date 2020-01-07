@@ -2,11 +2,19 @@
 
 /* eslint no-continue: 0, no-loop-func: 0, no-underscore-dangle: 0, no-restricted-syntax: 0 */
 
+const assert = require('assert');
 const { readFileSync } = require('fs');
 const { join } = require('path');
 
 const turf = require('@turf/turf');
 const _ = require('lodash');
+
+const {
+  NORTHBOUND,
+  EASTBOUND,
+  SOUTHBOUND,
+  WESTBOUND
+} = require('../../constants/directionOfTravel');
 
 // const nysBoundingPolygon = JSON.parse(
 // readFileSync(join(__dirname, './nys.bounding.geojson'))
@@ -32,6 +40,34 @@ const roadInAlbany = geomFeature =>
 //   They are simply metadata objects.
 //   We need to use their respective
 
+const getMicroLevelDirectionOfTravel = feature => {
+  const points = _.uniqWith(turf.explode(feature).features, _.isEqual);
+  const startPoint = _.first(points);
+  const endPoint = _.last(points);
+
+  const bearing = turf.bearing(startPoint, endPoint, { final: true });
+
+  assert(bearing >= 0 && bearing <= 360);
+
+  if (bearing <= 45 || bearing > 315) {
+    return NORTHBOUND;
+  }
+
+  if (bearing > 45 || bearing <= 135) {
+    return EASTBOUND;
+  }
+
+  if (bearing > 135 || bearing <= 225) {
+    return SOUTHBOUND;
+  }
+
+  if (bearing > 225 || bearing <= 315) {
+    return WESTBOUND;
+  }
+
+  throw new Error(`INVARIANT BROKEN: bearing = ${bearing}`);
+};
+
 const createForwardReferenceFeature = (geomFeature, osmMetadata) => {
   const {
     properties: {
@@ -39,7 +75,8 @@ const createForwardReferenceFeature = (geomFeature, osmMetadata) => {
       fromIntersectionId,
       toIntersectionId,
       forwardReferenceId
-    }
+    },
+    geometry: { coordinates }
   } = geomFeature;
 
   const properties = {
@@ -51,7 +88,22 @@ const createForwardReferenceFeature = (geomFeature, osmMetadata) => {
     osmMetadata
   };
 
-  return Object.assign({}, geomFeature, { id: forwardReferenceId, properties });
+  try {
+    const feature = turf.lineString(coordinates, properties, {
+      id: forwardReferenceId
+    });
+
+    feature.properties.shstReferenceMicroLevelDirectionOfTravel = getMicroLevelDirectionOfTravel(
+      feature
+    );
+
+    console.log(JSON.stringify(feature, null, 4));
+    return feature;
+  } catch (err) {
+    console.error(err);
+    console.log(JSON.stringify({ coordinates, properties }, null, 4));
+    throw err;
+  }
 };
 
 const createBackReferenceFeature = (geomFeature, osmMetadata) => {
@@ -87,11 +139,15 @@ const createBackReferenceFeature = (geomFeature, osmMetadata) => {
 
   const reversedCoords = geometry.coordinates.slice().reverse();
 
-  return Object.assign({}, geomFeature, {
-    id: backReferenceId,
-    properties,
-    geometry: { type: 'LineString', coordinates: reversedCoords }
+  const feature = turf.lineString(reversedCoords, properties, {
+    id: backReferenceId
   });
+
+  feature.properties.shstReferenceMicroLevelDirectionOfTravel = getMicroLevelDirectionOfTravel(
+    feature
+  );
+
+  return feature;
 };
 
 class ShStReferenceFeaturesIterator {

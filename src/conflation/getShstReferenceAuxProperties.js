@@ -78,14 +78,12 @@ const getShstRefGeomVerticesSeq = ({
 
 const getShstReferenceAuxProperties = shstReferenceFeature => {
   const {
-    properties: { reversed }
+    properties: { shstReferenceMicroLevelDirectionOfTravel }
   } = shstReferenceFeature;
-
-  const shstReferenceDir = reversed ? 'B' : 'F';
 
   const shstReferenceAuxProperties = {
     shstReferenceId: getShstReferenceId(shstReferenceFeature),
-    shstReferenceDir
+    shstReferenceMicroLevelDirectionOfTravel
   };
 
   shstReferenceAuxProperties.shstRefGeomLengthKm = turf.length(
