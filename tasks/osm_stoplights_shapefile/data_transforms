@@ -1,0 +1,24 @@
+#!/bin/bash
+
+set -e
+
+mkdir -p ./base_data ./derived_data
+
+sqlite3 ../../data/sqlite/raw_osm 'select * from nodes;' | 
+  grep -v null |
+  grep signal \
+  > base_data/osm_nodes_with_traffic_signals.psv
+
+./src/nodes_dump_to_ndjson \
+  < base_data/osm_nodes_with_traffic_signals.psv \
+  > derived_data/traffic_signals.ndjson
+
+pushd ./derived_data/ >/dev/null
+
+../../../spike/ < traffic_signals.ndjson > traffic_signals.geojson
+
+ogr2ogr -nlt POINT -skipfailures -f 'ESRI Shapefile' traffic_signals traffic_signals.geojson
+
+GZIP=-9 tar zcf nys_traffic_signals.tar.gz nys_traffic_signals
+
+popd >/dev/null

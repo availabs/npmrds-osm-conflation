@@ -1,0 +1,28 @@
+#!/usr/bin/env node
+
+const { pipe, through } = require('mississippi');
+const split = require('split2');
+const turf = require('@turf/turf');
+
+pipe(
+  process.stdin,
+  split(),
+  through(function parser(line, $, cb) {
+    const [id, lon, lat, tags] = line.toString().split(/\|/);
+
+    const coords = [+lon, +lat];
+    const properties = JSON.parse(tags);
+
+    const feature = turf.point(coords, properties, { id });
+
+    this.push(`${JSON.stringify(feature)}\n`);
+
+    return cb();
+  }),
+  process.stdout,
+  err => {
+    if (err) {
+      console.error(err);
+    }
+  }
+);
