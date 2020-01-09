@@ -3,7 +3,9 @@
 /* eslint no-param-reassign: 0, no-restricted-syntax: 0, no-await-in-loop: 0 */
 
 const { mkdirSync } = require('fs');
-const { join } = require('path');
+const { isAbsolute, join } = require('path');
+
+const yargs = require('yargs');
 
 const levelup = require('levelup');
 const leveldown = require('leveldown');
@@ -11,25 +13,37 @@ const encode = require('encoding-down');
 
 const conflationOsmSQLiteService = require('../services/conflationOsmSQLiteService');
 
-const dbsParentDir = join(__dirname, '../../data/leveldb/');
-
-mkdirSync(dbsParentDir, { recursive: true });
-
 const JSON_ENC = { valueEncoding: 'json' };
 
-const CONFLATION_NODES2WAYS_DIR = join(dbsParentDir, 'conflationNodes2Ways');
+const cliArgsSpec = {
+  output_dir: {
+    demand: true,
+    type: 'string'
+  }
+};
+
+const {
+  argv: { output_dir }
+} = yargs
+  .strict()
+  .parserConfiguration({
+    'camel-case-expansion': false,
+    'flatten-duplicate-arrays': false
+  })
+  .wrap(yargs.terminalWidth() / 1.618)
+  .option(cliArgsSpec);
+
+const outputDir = isAbsolute(output_dir)
+  ? output_dir
+  : join(process.cwd(), output_dir);
+
+mkdirSync(outputDir, { recursive: true });
+
+const CONFLATION_NODES2WAYS_DIR = join(outputDir, 'conflationNodes2Ways');
 
 const conflationNodes2WaysDB = levelup(
   encode(leveldown(CONFLATION_NODES2WAYS_DIR), JSON_ENC)
 );
-
-/*
-  const conflationWay = {
-    id,
-    nodes: nodeIds,
-    tags: { ... }
-  };
-*/
 
 const loadNodes2Ways = async () => {
   const iterator = conflationOsmSQLiteService.makeWaysIterator();

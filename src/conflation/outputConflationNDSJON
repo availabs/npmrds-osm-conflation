@@ -12,8 +12,6 @@ const targetMaps = Array.prototype.concat(
   'osm'
 );
 
-const directionOfTravel = require('../constants/directionOfTravel');
-
 const iterator = conflationMapSQLiteService.makeConflationMapFeatureIterator();
 
 (async () => {
@@ -86,9 +84,10 @@ const iterator = conflationMapSQLiteService.makeConflationMapFeatureIterator();
         .reverse()
         .value();
 
-      const dir = directionOfTravel[megaLevelDirOfTrav];
-      newProps.dir = dir;
+      // console.error(`~~> ${megaLevelDirOfTrav}`);
+      newProps.dir = megaLevelDirOfTrav;
     } else {
+      // console.error(`##> ${shstReferenceMicroLevelDirectionOfTravel}`);
       newProps.dir = shstReferenceMicroLevelDirectionOfTravel;
     }
 

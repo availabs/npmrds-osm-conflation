@@ -15,18 +15,19 @@ const initializeWorkDatabase = db => {
     BEGIN;
 
     CREATE TABLE IF NOT EXISTS conflation_map_features (
-      proto_id            INT PRIMARY KEY,
-      network_level       REAL NOT NULL,
-      geoprox_key         TEXT NOT NULL,
-      feature             TEXT NOT NULL -- JSON
+      proto_id       INT PRIMARY KEY,
+      network_level  REAL NOT NULL,
+      geoprox_key    TEXT NOT NULL,
+      feature        TEXT NOT NULL -- JSON
     ) WITHOUT ROWID;
 
     CREATE TABLE IF NOT EXISTS conflation_map_metadata (
-      conflation_map_proto_id  INT,
-      target_map               TEXT NOT NULL,
-      matched_target_map_id    TEXT NOT NULL,
-      matched_target_map_idx   INT NOT NULL,
-      shst_ref_split_idx       INT NOT NULL,
+      conflation_map_proto_id       INT,
+      target_map                    TEXT NOT NULL,
+      target_map_id                 TEXT NOT NULL,
+      matched_target_map_id         TEXT NOT NULL,
+      matched_target_map_micro_idx  INT NOT NULL,
+      shst_ref_split_idx            INT NOT NULL,
       PRIMARY KEY (
         conflation_map_proto_id,
         target_map
@@ -52,10 +53,11 @@ const createInsertMetadataStmnt = db =>
     INSERT INTO conflation_map_metadata (
       conflation_map_proto_id,
       target_map,
+      target_map_id,
       matched_target_map_id,
-      matched_target_map_idx,
+      matched_target_map_micro_idx,
       shst_ref_split_idx
-    ) VALUES(?, ?, ?, ?, ?) ;
+    ) VALUES(?, ?, ?, ?, ?, ?) ;
   `);
 
 class ConflationWorkDatabaseService {
@@ -77,7 +79,7 @@ class ConflationWorkDatabaseService {
 
     this.insertFeature = feature => {
       ++protoId;
-      console.log('protoId:', protoId);
+      // console.log('protoId:', protoId);
 
       const {
         properties: { networklevel, segmentIndex }
@@ -98,6 +100,7 @@ class ConflationWorkDatabaseService {
 
           if (!_.isNil(targetMapMetadata)) {
             const {
+              targetMapId,
               matchedTargetMapId,
               matchedTargetMapMicroIdx
             } = targetMapMetadata;
@@ -105,6 +108,7 @@ class ConflationWorkDatabaseService {
             insertMetadataStmnt.run([
               protoId,
               targetMap,
+              targetMapId,
               matchedTargetMapId,
               +matchedTargetMapMicroIdx || 0,
               +segmentIndex
@@ -141,8 +145,8 @@ class ConflationWorkDatabaseService {
                 (
                   ROW_NUMBER ()
                     OVER (
-                      PARTITION BY target_map, matched_target_map_id
-                      ORDER BY matched_target_map_idx, shst_ref_split_idx
+                      PARTITION BY target_map, target_map_id
+                      ORDER BY matched_target_map_micro_idx, shst_ref_split_idx
                     ) - 1 -- zero-index
                 ) AS conflation_map_idx
               FROM conflation_map_metadata

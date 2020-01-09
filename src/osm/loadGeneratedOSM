@@ -186,10 +186,6 @@ const loadConflationGeneratedOsmNodesAndWays = () => {
   const iterator = conflationMapSQLiteService.makeConflationMapFeatureIterator();
 
   for (const conflationMapFeature of iterator) {
-    // if (!isInAlbany(conflationMapFeature)) {
-    // continue;
-    // }
-
     try {
       validateMatchedWay(conflationMapFeature);
     } catch (err) {

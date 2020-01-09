@@ -16,30 +16,23 @@ const {
   WESTBOUND
 } = require('../../constants/directionOfTravel');
 
-// const nysBoundingPolygon = JSON.parse(
-// readFileSync(join(__dirname, './nys.bounding.geojson'))
-// );
+const geoBoundsFilePath = join(__dirname, './nys.bounding.geojson');
+// const geoBoundsFilePath = join(__dirname, './albany.bounding.geojson');
 
-const albanyBoundingPolygon = JSON.parse(
-  readFileSync(join(__dirname, './albany.bounding.geojson'))
-);
+const geoBoundingPolygon = JSON.parse(readFileSync(join(geoBoundsFilePath)));
 
 const selectShStReferenceFromCandidates = require('./selectShStReferenceFromCandidates');
 
-// const roadInNYS = geomFeature =>
-// nysBoundingPolygon.geometry.type === 'MultiPolygon'
-// ? nysBoundingPolygon.geometry.coordinates.some(coordinates =>
-// turf.booleanWithin(geomFeature, { type: 'Polygon', coordinates })
-// )
-// : turf.booleanWithin(geomFeature, nysBoundingPolygon);
-
-const roadInAlbany = geomFeature =>
-  turf.booleanWithin(geomFeature, albanyBoundingPolygon);
+const roadInGeoBounds = geomFeature =>
+  geoBoundingPolygon.geometry.type === 'MultiPolygon'
+    ? geoBoundingPolygon.geometry.coordinates.some(coordinates =>
+        turf.booleanWithin(geomFeature, { type: 'Polygon', coordinates })
+      )
+    : turf.booleanWithin(geomFeature, geoBoundingPolygon);
 
 // In the SharedStreets tileset, References are not GeoJSON features.
 //   They are simply metadata objects.
 //   We need to use their respective
-
 const getMicroLevelDirectionOfTravel = feature => {
   const points = _.uniqWith(turf.explode(feature).features, _.isEqual);
   const startPoint = _.first(points);
@@ -158,41 +151,45 @@ class ShStReferenceFeaturesIterator {
       const shstRefCandidates = [];
 
       for (const row of iterator) {
-        const { shst_reference_id, geom_feature, metadata, is_forward } = row;
-        const geomFeature = JSON.parse(geom_feature);
-        const { osmMetadata = null } = metadata ? JSON.parse(metadata) : {};
+        try {
+          const { shst_reference_id, geom_feature, metadata, is_forward } = row;
+          const geomFeature = JSON.parse(geom_feature);
+          const { osmMetadata = null } = metadata ? JSON.parse(metadata) : {};
 
-        if (!roadInAlbany(geomFeature)) {
-          continue;
-        }
-
-        // if (!roadInNYS(geomFeature)) {
-        // console.error(JSON.stringify(geomFeature.geometry.coordinates));
-        // continue;
-        // }
-
-        const curShstRefId = shst_reference_id;
-
-        if (prevShStRefId !== curShstRefId && shstRefCandidates.length) {
-          const selectedShStRef = selectShStReferenceFromCandidates(
-            shstRefCandidates
-          );
-          shstRefCandidates.length = 0;
-
-          if (selectedShStRef) {
-            yield selectedShStRef;
-          } else {
-            // FIXME: This should never be the case. Throw instead.
-            console.error('ERROR: Could not select shstRef from candidates.');
+          if (!roadInGeoBounds(geomFeature)) {
+            continue;
           }
+
+          // if (!roadInNYS(geomFeature)) {
+          // console.error(JSON.stringify(geomFeature.geometry.coordinates));
+          // continue;
+          // }
+
+          const curShstRefId = shst_reference_id;
+
+          if (prevShStRefId !== curShstRefId && shstRefCandidates.length) {
+            const selectedShStRef = selectShStReferenceFromCandidates(
+              shstRefCandidates
+            );
+            shstRefCandidates.length = 0;
+
+            if (selectedShStRef) {
+              yield selectedShStRef;
+            } else {
+              // FIXME: This should never be the case. Throw instead.
+              console.error('ERROR: Could not select shstRef from candidates.');
+            }
+          }
+
+          const feature = is_forward
+            ? createForwardReferenceFeature(geomFeature, osmMetadata)
+            : createBackReferenceFeature(geomFeature, osmMetadata);
+
+          shstRefCandidates.push(feature);
+          prevShStRefId = curShstRefId;
+        } catch (err) {
+          console.error(err);
         }
-
-        const feature = is_forward
-          ? createForwardReferenceFeature(geomFeature, osmMetadata)
-          : createBackReferenceFeature(geomFeature, osmMetadata);
-
-        shstRefCandidates.push(feature);
-        prevShStRefId = curShstRefId;
       }
 
       // Done with the loop. Flush the final shstRef.
