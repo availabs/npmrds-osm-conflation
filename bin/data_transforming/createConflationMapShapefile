@@ -1,0 +1,50 @@
+#!/bin/bash
+
+set -e
+
+if [ "$#" -ne 1 ]; then
+  (>&2 echo 'USAGE: You must provide the path to the gzipped NDJSON file as the single positional CLI argument:')
+  exit 1
+fi
+
+if [ ! -f "$1" ]; then
+  (>&2 echo "ERROR: No file found at at $1")
+  exit 1
+fi
+
+ndjson_to_geojson="$( dirname "${BASH_SOURCE[0]}" )/ndjson_to_geojson"
+
+INF="$( realpath "$1" )"
+
+TMP_DIR="$( mktemp -d  )"
+
+echo "$TMP_DIR"
+
+function finish {
+  rm -rf "$TMP_DIR"
+}
+trap finish EXIT
+
+zcat "$INF" |
+  sed 's/networklevel/networklev/' |
+  split -l 10000 - "$TMP_DIR/map_"
+
+find "$TMP_DIR" -type f |
+  while read -r ndjson_file; do
+    "$ndjson_to_geojson" < "$ndjson_file" > "${ndjson_file}.geojson"
+    rm -f "$ndjson_file"
+  done
+
+SHP_FILE="$( sed 's/ndjson\.gz$//; s/$/shapefile/;' <<< "$INF" )"
+rm -rf "$SHP_FILE"
+
+find "$TMP_DIR" -type f -name '*.geojson' |
+  sort |
+  while read -r f; do
+    if ! [ -f "$SHP_FILE" ]; then
+      ogr2ogr -f 'ESRI Shapefile' "$SHP_FILE" "$f" -nln conflation
+    else
+      ogr2ogr -f 'ESRI Shapefile' -update -append "$SHP_FILE" "$f" -nln conflation
+    fi
+  done
+

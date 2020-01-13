@@ -1,0 +1,51 @@
+#!/bin/bash
+
+set -e
+
+VERSION='0.4.1'
+
+OUTPUT_DIR="conflation_map_$VERSION"
+
+mkdir -p "$OUTPUT_DIR"
+
+./src/conflation/outputConflationNDSJON > "$OUTPUT_DIR"/conflation_map."$VERSION".ndjson
+./src/osm/outputConflationOSM > "$OUTPUT_DIR"/conflation_map."$VERSION".osm
+./src/osm/createConflationNode2WaysLevelDb --output_dir "$OUTPUT_DIR"
+
+./bin/data_transforming/ndjson_to_geojson < "$OUTPUT_DIR"/conflation_map."$VERSION".ndjson > "$OUTPUT_DIR"/conflation_map."$VERSION".geojson
+
+gzip -9 conflation_map."$VERSION".ndjson
+gzip -9 conflation_map."$VERSION".geojson
+gzip -9 conflation_map."$VERSION".osm
+
+./bin/data_transforming/createMBTilesFromGeoJSON "$OUTPUT_DIR"/conflation_map."$VERSION".ndjson.gz "$OUTPUT_DIR"/conflation_map."$VERSION".mbtiles
+
+./bin/data_transforming/createConflationMapShapefile "$OUTPUT_DIR"/conflation_map."$VERSION".ndjson.gz
+
+
+pushd "$OUTPUT_DIR" >/dev/null
+
+GZIP=-9 tar zcf conflation_map."$VERSION".shapefile.tar.gz conflation_map."$VERSION".shapefile
+
+rm -rf conflation_map."$VERSION".shapefile
+
+osmosis \
+  --read-xml file=conflation_map."$VERSION".osm \
+  --sort type="TypeThenId" \
+  --write-pbf omitmetadata=true conflation_map."$VERSION".osm.pbf
+
+popd
+
+### Further steps
+# 
+# 0. Copy the OUTPUT_DIR to lor:data/
+# 1. Upload the mbtiles to mapbox
+# 2. ares:code/npmrds-network-routing/directional-osrm-server.0.3.x
+# 3. scp ./conflation_map_0.3.0/conflation_map.0.3.0.osm.pbf ares:code/npmrds-network-routing/osrm_experiments.0.3.x/host_mnt/data
+# 4. on ares, in ~/code/npmrds-network-routing/osrm_experiments.0.3.x/
+#   a. delete the previous conflation map files in ./host_mnt/data/
+#   b. sudo ./build
+#   c. sudo ./run # in a tmux session
+# 5. scp -r data/leveldb/conflationNodes2Ways ares:code/npmrds-network-routing/directional-osrm-server.0.3.x/data/levelDBs/
+# 6 on ares, in ~/code/npmrds-network-routing/directional-osrm-server.0.3.x
+#   a. ./start # in a tmux session
