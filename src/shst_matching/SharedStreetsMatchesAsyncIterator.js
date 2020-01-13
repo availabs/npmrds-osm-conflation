@@ -25,7 +25,7 @@ class SharedStreetsMatchesAsyncIterator {
             generalShstMatchFlags
           );
 
-          console.error('=== MATCHED', shstMatchedFeatures.length);
+          console.error('=== MATCHED', Array.isArray(shstMatchedFeatures) ? shstMatchedFeatures.length : 0);
 
           // Process the matches
           const processedShstMatchResultsByTargetMapId = matchedFeaturesProcessor.handleShstMatchedFeatures(
@@ -41,7 +41,7 @@ class SharedStreetsMatchesAsyncIterator {
             .map('length')
             .sum();
 
-          console.error('=== POSTPROCESSED', postprocessedMatchesCount);
+          console.error('=== POSTPROCESSED', postprocessedMatchesCount || 0);
 
           // Reset the queue
           unmatchedFeaturesQueue.length = 0;

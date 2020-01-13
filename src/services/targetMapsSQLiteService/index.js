@@ -124,9 +124,7 @@ function* makeFeatureIterator(targetMap) {
     SELECT
         feature
       FROM ${targetMap}
-WHERE (county_code = '36001')
       ORDER BY region_code, county_code, geoprox_key
--- LIMIT 128
     ;
   `
     )

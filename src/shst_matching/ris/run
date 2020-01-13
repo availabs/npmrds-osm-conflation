@@ -19,9 +19,13 @@ const MAX_MATCHING_ITERATIONS = 2;
   try {
     const targetMaps = targetMapsSQLiteService.getTargetMapsList();
 
+//    const risTargetMaps = targetMaps.filter(targetMap =>
+//      /^ris_\d{4}$/.test(targetMap)
+//    );
+
     const risTargetMaps = targetMaps.filter(targetMap =>
       /^ris_\d{4}$/.test(targetMap)
-    );
+    ).filter(targetMap => targetMap !== 'ris_2016');
 
     for (let i = 0; i < risTargetMaps.length; ++i) {
       const targetMap = risTargetMaps[i];

@@ -131,7 +131,7 @@ async function matchTargetMapFeatures(features, flags = []) {
 
   const handleMatches = matches => {
     if (Array.isArray(matches) && matches.length) {
-      progress = true;
+      // progress = true;
 
       for (let i = 0; i < matches.length; ++i) {
         const match = matches[i];

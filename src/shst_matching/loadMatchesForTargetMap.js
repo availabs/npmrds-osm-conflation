@@ -15,7 +15,7 @@ const loadMatchesForTargetMap = async (
 
     for await (const { shstMatchedFeatures } of shstMatchesAsyncIterator) {
       if (Array.isArray(shstMatchedFeatures) && shstMatchedFeatures.length) {
-        progress = true;
+        // progress = true;
 
         for (let i = 0; i < shstMatchedFeatures.length; ++i) {
           const shstMatchedFeature = shstMatchedFeatures[i];

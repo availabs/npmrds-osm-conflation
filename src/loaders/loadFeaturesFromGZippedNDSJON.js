@@ -33,10 +33,10 @@ const loadFeaturesFromGZippedNDJSON = ({
             propertyTransforms(feature)
           );
 
-          // FIXME: Remove dev subset filter
-          if (feature.properties.targetMapCountyCode !== '36001') {
-            return cb();
-          }
+          // // FIXME: Remove dev subset filter
+          // if (feature.properties.targetMapCountyCode !== '36001') {
+          //   return cb();
+          // }
 
           // eslint-disable-next-line no-param-reassign
           feature.id = feature.properties.targetMapId;

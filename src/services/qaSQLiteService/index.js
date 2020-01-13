@@ -28,7 +28,7 @@ const QA_OUTPUT_DIR = join(
   `qa_${_.round(Date.now() / 1000)}`
 );
 
-mkdirSync(QA_OUTPUT_DIR);
+mkdirSync(QA_OUTPUT_DIR, { recurse: true });
 
 const byFeatureWriteStream = createWriteStream(
   join(QA_OUTPUT_DIR, 'by_feature.csv')

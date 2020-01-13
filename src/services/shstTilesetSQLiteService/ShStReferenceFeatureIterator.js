@@ -90,7 +90,7 @@ const createForwardReferenceFeature = (geomFeature, osmMetadata) => {
       feature
     );
 
-    console.log(JSON.stringify(feature, null, 4));
+    // console.log(JSON.stringify(feature, null, 4));
     return feature;
   } catch (err) {
     console.error(err);

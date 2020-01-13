@@ -135,7 +135,8 @@ class ShstMatchingWorkDatabaseService {
       for (const feature of iterator) {
         const { id } = feature;
 
-        const matched = featureWasMatchedStmnt.get([id]);
+        // const matched = featureWasMatchedStmnt.get([id]);
+        const matched = false
 
         if (!matched) {
           ++unmatchedCt;
