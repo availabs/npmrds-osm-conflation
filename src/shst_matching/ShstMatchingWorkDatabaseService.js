@@ -303,7 +303,6 @@ class ShstMatchingWorkDatabaseService {
         } = feature;
 
         if (!previouslyLoaded.has(targetMapId)) {
-          console.log(JSON.stringify(feature, null, 4));
           shstMatchesSQLiteService.insertFeatures([feature]);
         }
       }

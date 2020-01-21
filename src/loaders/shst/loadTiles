@@ -35,6 +35,11 @@ USAGE:
   process.exit(1);
 }
 
+const loadedTileIds = new Set(tilesetService.getAllLoadedTileIds());
+
+// E.G.: 12-1230-1534.metadata.8.pbf
+const getTileId = tileFileName => tileFileName.replace(/\..*/, '');
+
 const tileFiles = readdirSync(SHST_TILESET_DIR, { withFileTypes: true })
   .filter(
     dirent =>
@@ -42,10 +47,23 @@ const tileFiles = readdirSync(SHST_TILESET_DIR, { withFileTypes: true })
       new RegExp(`${SHST_TILE_HIERARCHY_LEVEL}.pbf$`).test(dirent.name)
   )
   .map(({ name }) => name)
+  .filter(name => !loadedTileIds.has(getTileId(name)))
   .sort();
+
+let prevTileId = null;
 
 for (let i = 0; i < tileFiles.length; ++i) {
   const inf = tileFiles[i];
+
+  const curTileId = getTileId(inf);
+
+  if (curTileId !== prevTileId) {
+    if (prevTileId) {
+      tilesetService.insertLoadedTileId(prevTileId);
+    }
+
+    prevTileId = curTileId;
+  }
 
   try {
     const [fileType] = inf.match(/reference|intersection|geometry|metadata/);
@@ -69,4 +87,8 @@ for (let i = 0; i < tileFiles.length; ++i) {
     // console.error(err)
     console.error(`WARNING: Error processing ${inf}`);
   }
+}
+
+if (prevTileId) {
+  tilesetService.insertLoadedTileId(prevTileId);
 }

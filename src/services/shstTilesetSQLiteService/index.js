@@ -14,6 +14,7 @@ const Database = require('better-sqlite3');
 const ShStReferenceFeatureIterator = require('./ShStReferenceFeatureIterator');
 
 const SQLITE_PATH = join(__dirname, '../../../data/sqlite/');
+// const SQLITE_PATH = join(__dirname, '../../../tmpsqlite/');
 
 const SHST_TILESET_SQLITE_PATH = join(SQLITE_PATH, 'shst_tileset');
 
@@ -25,6 +26,10 @@ const db = new Database(SHST_TILESET_SQLITE_PATH);
 // Initialize the database
 db.exec(`
   BEGIN;
+
+  CREATE TABLE IF NOT EXISTS shst_loaded_tiles (
+    tile_id  TEXT PRIMARY KEY
+  ) WITHOUT ROWID;
 
   CREATE TABLE IF NOT EXISTS shst_geometry (
     id                    TEXT PRIMARY KEY,
@@ -210,6 +215,28 @@ const insertReferences = references => {
   }
 };
 
+// Prepared statement for shst geometry INSERTs
+const shstLoadedTilesStmnt = db.prepare(`
+  INSERT INTO shst_loaded_tiles (
+    tile_id
+  ) VALUES(?);
+`);
+
+const insertLoadedTileId = tileId => {
+  try {
+    shstLoadedTilesStmnt.run([tileId]);
+  } catch (err) {
+    console.error(err);
+  }
+};
+
+const allLoadedTileIdsStmnt = db.prepare(
+  `SELECT tile_id FROM shst_loaded_tiles;`
+);
+
+const getAllLoadedTileIds = () =>
+  _.flatten(allLoadedTileIdsStmnt.raw().all()).sort();
+
 // Prepared statement for joining db tables for shstReference Feature iterator creation.
 const shstGeometryMetadataIteratorQuery = db.prepare(`
   SELECT
@@ -249,6 +276,8 @@ module.exports = {
   insertGeometries,
   insertMetadata,
   insertReferences,
+  insertLoadedTileId,
+  getAllLoadedTileIds,
   makeGeometryMetadataIterator,
   makeShStReferenceFeatureIterator
 };
