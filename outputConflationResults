@@ -2,7 +2,7 @@
 
 set -e
 
-VERSION='0.4.1'
+VERSION='0.4.2'
 
 OUTPUT_DIR="conflation_map_$VERSION"
 
@@ -12,18 +12,17 @@ mkdir -p "$OUTPUT_DIR"
 ./src/osm/outputConflationOSM > "$OUTPUT_DIR"/conflation_map."$VERSION".osm
 ./src/osm/createConflationNode2WaysLevelDb --output_dir "$OUTPUT_DIR"
 
-./bin/data_transforming/ndjson_to_geojson < "$OUTPUT_DIR"/conflation_map."$VERSION".ndjson > "$OUTPUT_DIR"/conflation_map."$VERSION".geojson
+
+pushd "$OUTPUT_DIR" >/dev/null
+
+../bin/data_transforming/ndjson_to_geojson < conflation_map."$VERSION".ndjson > conflation_map."$VERSION".geojson
 
 gzip -9 conflation_map."$VERSION".ndjson
 gzip -9 conflation_map."$VERSION".geojson
-gzip -9 conflation_map."$VERSION".osm
 
-./bin/data_transforming/createMBTilesFromGeoJSON "$OUTPUT_DIR"/conflation_map."$VERSION".ndjson.gz "$OUTPUT_DIR"/conflation_map."$VERSION".mbtiles
+../bin/data_transforming/createMBTilesFromGeoJSON conflation_map."$VERSION".ndjson.gz conflation_map."$VERSION".mbtiles
 
-./bin/data_transforming/createConflationMapShapefile "$OUTPUT_DIR"/conflation_map."$VERSION".ndjson.gz
-
-
-pushd "$OUTPUT_DIR" >/dev/null
+../bin/data_transforming/createConflationMapShapefile conflation_map."$VERSION".ndjson.gz
 
 GZIP=-9 tar zcf conflation_map."$VERSION".shapefile.tar.gz conflation_map."$VERSION".shapefile
 
@@ -34,10 +33,12 @@ osmosis \
   --sort type="TypeThenId" \
   --write-pbf omitmetadata=true conflation_map."$VERSION".osm.pbf
 
+gzip -9 conflation_map."$VERSION".osm
+
 popd
 
 ### Further steps
-# 
+#
 # 0. Copy the OUTPUT_DIR to lor:data/
 # 1. Upload the mbtiles to mapbox
 # 2. ares:code/npmrds-network-routing/directional-osrm-server.0.3.x
