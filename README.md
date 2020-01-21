@@ -33,7 +33,7 @@ sudo mount -t tmpfs -o size=96G conflation_tmp_sqlite /home/avail/code/npmrds-os
 
 Additionally, you can set the TMPDIR to the in-memory data directory to speed up matching:
 
-``` bash
+```
 time \
 	SQLITE_TMPDIR=/home/avail/code/npmrds-osm-conflation/tmpsqlite/sqlite_tmpdir/ \
 	TMPDIR=/home/avail/code/npmrds-osm-conflation/tmpsqlite/sqlite_tmpdir/ \
