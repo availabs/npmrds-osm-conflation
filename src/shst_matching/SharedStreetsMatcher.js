@@ -23,7 +23,7 @@ const OUTF_PATH = 'shst_match_output.geojson';
 const MATCHED_PATH = OUTF_PATH.replace(/geojson$/, 'matched.geojson');
 
 const runShstMatch = (inFilePath, outFilePath, flags) => {
-  console.log('FLAGS:', flags)
+  console.log('FLAGS:', flags);
   return new Promise(resolve => {
     const cp = spawn(
       `${SHST_PATH}`,
@@ -55,7 +55,7 @@ const runShstMatch = (inFilePath, outFilePath, flags) => {
     cp.stdout.pipe(process.stdout);
     cp.stderr.pipe(process.stderr);
   });
-}
+};
 const collectMatchedFeatures = matchedFilePath => {
   const matchedFeatureCollection = existsSync(matchedFilePath)
     ? JSON.parse(readFileSync(matchedFilePath, UTF8_ENCODING))

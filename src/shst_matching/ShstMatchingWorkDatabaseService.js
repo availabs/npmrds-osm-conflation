@@ -3,6 +3,7 @@
 const { join } = require('path');
 
 const Database = require('better-sqlite3');
+const _ = require('lodash');
 
 const targetMapsSQLiteService = require('../services/targetMapsSQLiteService');
 const shstMatchesSQLiteService = require('../services/shstMatchesSQLiteService');
@@ -95,6 +96,7 @@ class ShstMatchingWorkDatabaseService {
         insertMatchedFeatureStmnt.run([id, strFeature]);
       } catch (err) {
         console.error(err);
+        console.error(JSON.stringify({ feature, id, strFeature }, null, 4));
       }
     };
 
@@ -116,17 +118,30 @@ class ShstMatchingWorkDatabaseService {
     };
 
     this.makeUnmatchedTargetMapFeaturesIterator = function* generator() {
-      const featureWasMatchedStmnt = matchedFeaturesWorkDb
-        .prepare(
-          `
-        SELECT 1
-          FROM matched_features
-          WHERE (
-            ( JSON_EXTRACT(feature, '$.properties.targetMapId') = ? )
-          )
-      `
+      // Initialize with features in the matchedFeaturesWorkDb
+      const matchedFeatures = new Set(
+        _.flatten(
+          matchedFeaturesWorkDb
+            .prepare(
+              `SELECT JSON_EXTRACT(feature, '$.properties.targetMapId') FROM matched_features`
+            )
+            .raw()
+            .all()
         )
-        .raw();
+      );
+
+      // Add features from the permanent shstMatchesSQLite Database
+      const previouslyLoadedIterator = shstMatchesSQLiteService.makeAllMatchedFeaturesIterator();
+
+      for (const feature of previouslyLoadedIterator) {
+        const {
+          properties: { targetMap: featureTargetMap, targetMapId }
+        } = feature;
+
+        if (featureTargetMap === targetMap) {
+          matchedFeatures.add(targetMapId);
+        }
+      }
 
       const iterator = targetMapsSQLiteService.makeFeatureIterator(targetMap);
 
@@ -135,14 +150,13 @@ class ShstMatchingWorkDatabaseService {
       for (const feature of iterator) {
         const { id } = feature;
 
-        const matched = featureWasMatchedStmnt.get([id]);
+        const matched = matchedFeatures.has(id);
 
         if (!matched) {
           ++unmatchedCt;
           yield feature;
         } else {
           ++startMatchedCt;
-          console.error('WAS MATCHED');
         }
       }
 
@@ -227,12 +241,12 @@ class ShstMatchingWorkDatabaseService {
         matchedFeaturesWorkDbFilePath,
         matchedFeaturesMetadataWorkDbFilePath
       );
-    }
+    };
 
     // At this state, the matchedFeaturesWorkDb and matchedFeaturesMetadataWorkDb are closed to modification.
     this.mergeTargetMapMatchedFeaturesMetadataWorkPropertiesIntoTargetMapFeatures = () => {
       if (!joinedDb) {
-        openJoinedDatabase()
+        openJoinedDatabase();
       }
 
       joinedDb.exec(
@@ -260,7 +274,21 @@ class ShstMatchingWorkDatabaseService {
 
     this.loadShstMatchesIntoPermanentDatabase = () => {
       if (!joinedDb) {
-        openJoinedDatabase()
+        openJoinedDatabase();
+      }
+
+      const previouslyLoaded = new Set();
+
+      const previouslyLoadedIterator = shstMatchesSQLiteService.makeAllMatchedFeaturesIterator();
+
+      for (const feature of previouslyLoadedIterator) {
+        const {
+          properties: { targetMap: featureTargetMap, targetMapId }
+        } = feature;
+
+        if (featureTargetMap === targetMap) {
+          previouslyLoaded.add(targetMapId);
+        }
       }
 
       const iterator = joinedDb
@@ -269,9 +297,15 @@ class ShstMatchingWorkDatabaseService {
         .iterate();
 
       for (const strFeature of iterator) {
-        const feature = JSON.parse(strFeature)
-        console.log(feature.id)
-        shstMatchesSQLiteService.insertFeatures([feature]);
+        const feature = JSON.parse(strFeature);
+        const {
+          properties: { targetMapId }
+        } = feature;
+
+        if (!previouslyLoaded.has(targetMapId)) {
+          console.log(JSON.stringify(feature, null, 4));
+          shstMatchesSQLiteService.insertFeatures([feature]);
+        }
       }
     };
   }
