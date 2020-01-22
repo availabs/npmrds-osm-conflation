@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# Pipe in GeoJSON via STDIN, get NDJSON via STDOUT
+# https://stackoverflow.com/a/48786559
+# https://remysharp.com/drafts/jq-recipes
+
+jq -c --stream 'fromstream( inputs | select([.[0][0]] == ["features"]) | del(.[0][0:2]) ) | select(.)'
