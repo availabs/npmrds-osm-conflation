@@ -1,3 +1,8 @@
+/* eslint no-param-reassign: 0 */
+
+// TODO: Write the following assertion
+// ogr2ogr -f CSV /vsistdout/ 2019 -sql 'SELECT count(fid) FROM RIS_2019 where fid = (objectid -1)'
+
 const _ = require('lodash');
 
 const loadFeaturesFromGZippedNDSJON = require('../loadFeaturesFromGZippedNDSJON');
@@ -29,11 +34,15 @@ const makeGetTargetMapProperties = targetMap => feature => {
       functional
     }
   } = feature;
+
+  feature.properties.fid = +objectid - 1;
+
   if (!(dot_id && gis_id && fips_co && Number.isFinite(beg_mp) && county_nam)) {
     throw new Error('RIS feature lacks properties necessary to create an ID.');
   }
 
-  const targetMapId = +objectid;
+  // FID = OBJECTID - 1
+  const targetMapId = feature.properties.fid;
 
   if (!Number.isFinite(targetMapId)) {
     throw new Error(

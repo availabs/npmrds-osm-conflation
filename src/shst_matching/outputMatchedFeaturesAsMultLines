@@ -1,0 +1,109 @@
+#!/usr/bin/env node
+
+/* eslint no-restricted-syntax: 0, no-await-in-loop: 0 */
+
+const { existsSync } = require('fs');
+const { join, isAbsolute } = require('path');
+
+const Database = require('better-sqlite3');
+const { fileSync: createTempFile } = require('tmp');
+
+const _ = require('lodash');
+
+const turf = require('@turf/turf');
+const yargs = require('yargs');
+
+const cliArgsSpec = {
+  targetMap: {
+    demand: true,
+    type: 'string'
+  },
+  shstMatchesSQLiteFile: {
+    demand: false,
+    type: 'string',
+    default: join(__dirname, '../../tmpsqlite/shst_matches')
+  },
+  targetMapSQLiteFile: {
+    demand: false,
+    type: 'string',
+    default: join(__dirname, '../../tmpsqlite/target_maps')
+  }
+};
+
+const { argv } = yargs
+  .strict()
+  .parserConfiguration({
+    'camel-case-expansion': false,
+    'flatten-duplicate-arrays': false
+  })
+  .wrap(yargs.terminalWidth() / 1.618)
+  .option(cliArgsSpec);
+
+const { targetMap } = argv;
+let { shstMatchesSQLiteFile, targetMapSQLiteFile } = argv;
+
+shstMatchesSQLiteFile = isAbsolute(shstMatchesSQLiteFile)
+  ? shstMatchesSQLiteFile
+  : join(process.cwd(), shstMatchesSQLiteFile);
+
+targetMapSQLiteFile = isAbsolute(targetMapSQLiteFile)
+  ? targetMapSQLiteFile
+  : join(process.cwd(), targetMapSQLiteFile);
+
+if (!existsSync(shstMatchesSQLiteFile)) {
+  console.error('Error: The shstMatchesSQLiteFile does not exist');
+  process.exit(1);
+}
+
+if (!existsSync(targetMapSQLiteFile)) {
+  console.error('Error: The targetMapSQLiteFile does not exist');
+  process.exit(1);
+}
+
+const { name: tmpFile } = createTempFile();
+
+const db = new Database(tmpFile);
+
+db.exec(`
+  BEGIN;
+
+  ATTACH DATABASE '${shstMatchesSQLiteFile}' AS shst_matches;
+  ATTACH DATABASE '${targetMapSQLiteFile}' AS target_maps;
+
+  COMMIT ;
+`);
+
+const outputUnmatchedFeatures = async () => {
+  const iterator = db
+    .prepare(
+      `
+          SELECT
+              t.feature || ',' || group_concat(s.feature) AS features
+            FROM target_maps.${targetMap} AS t
+              INNER JOIN shst_matches.shst_matches AS s
+              ON (t.id = s.target_map_id)
+            WHERE s.target_map = '${targetMap}'
+            GROUP BY t.id
+  `
+    )
+    .raw()
+    .iterate();
+
+  for (const [features] of iterator) {
+    const linestrings = JSON.parse(`[${features}]`);
+    const multiCoords = linestrings.map(
+      ({ geometry: { coordinates } }) => coordinates
+    );
+    const multiLineString = turf.multiLineString(
+      multiCoords,
+      {},
+      { id: _.first(linestrings).id }
+    );
+
+    console.log(JSON.stringify(multiLineString));
+
+    await new Promise(resolve => process.nextTick(resolve));
+  }
+};
+
+outputUnmatchedFeatures();

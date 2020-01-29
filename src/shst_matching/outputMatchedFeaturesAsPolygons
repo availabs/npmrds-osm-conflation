@@ -1,0 +1,123 @@
+#!/usr/bin/env node
+
+/* eslint no-restricted-syntax: 0, no-await-in-loop: 0 */
+
+const { existsSync } = require('fs');
+const { join, isAbsolute } = require('path');
+
+const Database = require('better-sqlite3');
+const { fileSync: createTempFile } = require('tmp');
+
+const _ = require('lodash');
+
+const turf = require('@turf/turf');
+const yargs = require('yargs');
+
+const cliArgsSpec = {
+  targetMap: {
+    demand: true,
+    type: 'string'
+  },
+  shstMatchesSQLiteFile: {
+    demand: false,
+    type: 'string',
+    default: join(__dirname, '../../tmpsqlite/shst_matches')
+  },
+  targetMapSQLiteFile: {
+    demand: false,
+    type: 'string',
+    default: join(__dirname, '../../tmpsqlite/target_maps')
+  }
+};
+
+const { argv } = yargs
+  .strict()
+  .parserConfiguration({
+    'camel-case-expansion': false,
+    'flatten-duplicate-arrays': false
+  })
+  .wrap(yargs.terminalWidth() / 1.618)
+  .option(cliArgsSpec);
+
+const { targetMap } = argv;
+let { shstMatchesSQLiteFile, targetMapSQLiteFile } = argv;
+
+shstMatchesSQLiteFile = isAbsolute(shstMatchesSQLiteFile)
+  ? shstMatchesSQLiteFile
+  : join(process.cwd(), shstMatchesSQLiteFile);
+
+targetMapSQLiteFile = isAbsolute(targetMapSQLiteFile)
+  ? targetMapSQLiteFile
+  : join(process.cwd(), targetMapSQLiteFile);
+
+if (!existsSync(shstMatchesSQLiteFile)) {
+  console.error('Error: The shstMatchesSQLiteFile does not exist');
+  process.exit(1);
+}
+
+if (!existsSync(targetMapSQLiteFile)) {
+  console.error('Error: The targetMapSQLiteFile does not exist');
+  process.exit(1);
+}
+
+const { name: tmpFile } = createTempFile();
+
+const db = new Database(tmpFile);
+
+db.exec(`
+  BEGIN;
+
+  ATTACH DATABASE '${shstMatchesSQLiteFile}' AS shst_matches;
+  ATTACH DATABASE '${targetMapSQLiteFile}' AS target_maps;
+
+  COMMIT ;
+`);
+
+const outputUnmatchedFeatures = async () => {
+  const iterator = db
+    .prepare(
+      `
+          SELECT
+              t.feature as t_feature,
+              group_concat(s.feature) AS s_features
+            FROM target_maps.${targetMap} AS t
+              INNER JOIN shst_matches.shst_matches AS s
+              ON (t.id = s.target_map_id)
+            WHERE s.target_map = '${targetMap}'
+            GROUP BY t.id
+  `
+    )
+    .iterate();
+
+  for (const { t_feature, s_features } of iterator) {
+    const targetMapFeature = JSON.parse(t_feature);
+
+    const { id } = targetMapFeature;
+    const { features: targetMapPoints } = turf.explode(targetMapFeature);
+
+    const shstMatches = JSON.parse(`[${s_features}]`);
+
+    for (let i = 0; i < shstMatches.length; ++i) {
+      const shstMatch = shstMatches[i];
+      const { features: shstMatchPoints } = turf.explode(shstMatch);
+
+      const allPoints = Array.prototype.concat(
+        targetMapPoints,
+        shstMatchPoints
+      );
+
+      const collection = turf.featureCollection(allPoints);
+
+      const hull = turf.concave(collection, { maxEdge: 30 / 1000 });
+
+      if (!_.isNil(hull)) {
+        hull.properties = { id };
+        console.log(JSON.stringify(hull));
+
+        await new Promise(resolve => process.nextTick(resolve));
+      }
+    }
+  }
+};
+
+outputUnmatchedFeatures();

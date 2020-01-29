@@ -70,7 +70,7 @@ const toposortShstMatchedFeatures = (
     //          if the removed better fit the flow of travel.
     const filteredShstMatchedFeatures = _(shstMatchedFeatures)
       .uniqWith(_.isEqual)
-      .sortBy('geometery.coordinates.length')
+      .sortBy('geometry.coordinates.length')
       .filter(
         (
           {

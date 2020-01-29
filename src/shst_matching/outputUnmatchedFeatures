@@ -1,0 +1,97 @@
+#!/usr/bin/env node
+
+/* eslint no-restricted-syntax: 0, no-await-in-loop: 0 */
+
+const { existsSync } = require('fs');
+const { join, isAbsolute } = require('path');
+
+const Database = require('better-sqlite3');
+const { fileSync: createTempFile } = require('tmp');
+
+const yargs = require('yargs');
+
+const cliArgsSpec = {
+  targetMap: {
+    demand: true,
+    type: 'string'
+  },
+  shstMatchesSQLiteFile: {
+    demand: false,
+    type: 'string',
+    default: join(__dirname, '../../tmpsqlite/shst_matches')
+  },
+  targetMapSQLiteFile: {
+    demand: false,
+    type: 'string',
+    default: join(__dirname, '../../tmpsqlite/target_maps')
+  }
+};
+
+const { argv } = yargs
+  .strict()
+  .parserConfiguration({
+    'camel-case-expansion': false,
+    'flatten-duplicate-arrays': false
+  })
+  .wrap(yargs.terminalWidth() / 1.618)
+  .option(cliArgsSpec);
+
+const { targetMap } = argv;
+let { shstMatchesSQLiteFile, targetMapSQLiteFile } = argv;
+
+shstMatchesSQLiteFile = isAbsolute(shstMatchesSQLiteFile)
+  ? shstMatchesSQLiteFile
+  : join(process.cwd(), shstMatchesSQLiteFile);
+
+targetMapSQLiteFile = isAbsolute(targetMapSQLiteFile)
+  ? targetMapSQLiteFile
+  : join(process.cwd(), targetMapSQLiteFile);
+
+if (!existsSync(shstMatchesSQLiteFile)) {
+  console.error('Error: The shstMatchesSQLiteFile does not exist');
+  process.exit(1);
+}
+
+if (!existsSync(targetMapSQLiteFile)) {
+  console.error('Error: The targetMapSQLiteFile does not exist');
+  process.exit(1);
+}
+
+const { name: tmpFile } = createTempFile();
+
+const db = new Database(tmpFile);
+
+db.exec(`
+  BEGIN;
+
+  ATTACH DATABASE '${shstMatchesSQLiteFile}' AS shst_matches;
+  ATTACH DATABASE '${targetMapSQLiteFile}' AS target_maps;
+
+  COMMIT ;
+`);
+
+const outputUnmatchedFeatures = async () => {
+  const iterator = db
+    .prepare(
+      `
+          SELECT
+              feature
+            FROM target_maps.${targetMap}
+            WHERE id NOT IN (
+              SELECT DISTINCT
+                  target_map_id
+                FROM shst_matches.shst_matches
+                WHERE target_map = '${targetMap}'
+            ) ;
+  `
+    )
+    .raw()
+    .iterate();
+
+  for (const [feature] of iterator) {
+    console.log(feature);
+    await new Promise(resolve => process.nextTick(resolve));
+  }
+};
+
+outputUnmatchedFeatures();
